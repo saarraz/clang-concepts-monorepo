@@ -6199,10 +6199,9 @@ void Sema::AddOverloadCandidate(
         return;
       }
 
-  Expr *RequiresClause = Function->getTrailingRequiresClause();
-  if (LangOpts.ConceptsTS && RequiresClause) {
+  if (LangOpts.ConceptsTS) {
     ConstraintSatisfaction Satisfaction;
-    if (CheckConstraintSatisfaction(RequiresClause, Satisfaction) ||
+    if (CheckFunctionConstraints(Function, Satisfaction) ||
         !Satisfaction.IsSatisfied) {
       Candidate.Viable = false;
       Candidate.FailureKind = ovl_fail_constraints_not_satisfied;
@@ -6719,10 +6718,9 @@ Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
         return;
       }
 
-  Expr *RequiresClause = Method->getTrailingRequiresClause();
-  if (LangOpts.ConceptsTS && RequiresClause) {
+  if (LangOpts.ConceptsTS) {
     ConstraintSatisfaction Satisfaction;
-    if (CheckConstraintSatisfaction(RequiresClause, Satisfaction) ||
+    if (CheckFunctionConstraints(Method, Satisfaction) ||
         !Satisfaction.IsSatisfied) {
       Candidate.Viable = false;
       Candidate.FailureKind = ovl_fail_constraints_not_satisfied;
@@ -7079,10 +7077,9 @@ void Sema::AddConversionCandidate(
     return;
   }
 
-  Expr *RequiresClause = Conversion->getTrailingRequiresClause();
-  if (LangOpts.ConceptsTS && RequiresClause) {
+  if (LangOpts.ConceptsTS) {
     ConstraintSatisfaction Satisfaction;
-    if (CheckConstraintSatisfaction(RequiresClause, Satisfaction) ||
+    if (CheckFunctionConstraints(Conversion, Satisfaction) ||
         !Satisfaction.IsSatisfied) {
       Candidate.Viable = false;
       Candidate.FailureKind = ovl_fail_constraints_not_satisfied;
@@ -9713,22 +9710,20 @@ static bool checkAddressOfFunctionIsAvailable(Sema &S, const FunctionDecl *FD,
     return false;
   }
 
-  if (const Expr *RC = FD->getTrailingRequiresClause()) {
-    ConstraintSatisfaction Satisfaction;
-    if (S.CheckConstraintSatisfaction(RC, Satisfaction))
-      return false;
-    if (!Satisfaction.IsSatisfied) {
-      if (Complain) {
-        if (InOverloadResolution)
-          S.Diag(FD->getBeginLoc(),
-                 diag::note_ovl_candidate_unsatisfied_constraints);
-        else
-          S.Diag(Loc, diag::err_addrof_function_constraints_not_satisfied)
-              << FD;
-        S.DiagnoseUnsatisfiedConstraint(Satisfaction);
-      }
-      return false;
+  ConstraintSatisfaction Satisfaction;
+  if (S.CheckFunctionConstraints(const_cast<FunctionDecl *>(FD), Satisfaction))
+    return false;
+  if (!Satisfaction.IsSatisfied) {
+    if (Complain) {
+      if (InOverloadResolution)
+        S.Diag(FD->getBeginLoc(),
+               diag::note_ovl_candidate_unsatisfied_constraints);
+      else
+        S.Diag(Loc, diag::err_addrof_function_constraints_not_satisfied)
+            << FD;
+      S.DiagnoseUnsatisfiedConstraint(Satisfaction);
     }
+    return false;
   }
 
   auto I = llvm::find_if(FD->parameters(), [](const ParmVarDecl *P) {
@@ -10706,8 +10701,7 @@ static void NoteFunctionCandidate(Sema &S, OverloadCandidate *Cand,
            diag::note_ovl_candidate_constraints_not_satisfied)
             << (unsigned) FnKind;
     ConstraintSatisfaction Satisfaction;
-    if (S.CheckConstraintSatisfaction(Fn->getTrailingRequiresClause(),
-                                      Satisfaction))
+    if (S.CheckFunctionConstraints(Fn, Satisfaction))
       break;
     S.DiagnoseUnsatisfiedConstraint(Satisfaction);
   }
