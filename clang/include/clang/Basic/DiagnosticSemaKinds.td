@@ -4518,6 +4518,8 @@ def note_checking_constraints_for_class_spec_id_here : Note<
   "specialization '%0' required here">;
 def note_constraint_substitution_here : Note<
   "while substituting template arguments into constraint expression here">;
+def note_constraint_normalization_here : Note<
+  "while substituting into constraints of %0 %1 here">;
 def note_instantiation_contexts_suppressed : Note<
   "(skipping %0 context%s0 in backtrace; use -ftemplate-backtrace-limit=0 to "
   "see all)">;

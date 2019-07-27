@@ -200,6 +200,7 @@ bool Sema::CodeSynthesisContext::isInstantiationRecord() const {
   case PriorTemplateArgumentSubstitution:
   case ConstraintsCheck:
   case NestedRequirementConstraintsCheck:
+  case ConstraintNormalization:
     return true;
 
   case RequirementInstantiation:
@@ -397,6 +398,15 @@ Sema::InstantiatingTemplate::InstantiatingTemplate(
           SemaRef, CodeSynthesisContext::ConstraintSubstitution,
           PointOfInstantiation, InstantiationRange, Template, nullptr,
           {}, &DeductionInfo) {}
+
+Sema::InstantiatingTemplate::InstantiatingTemplate(
+    Sema &SemaRef, SourceLocation PointOfInstantiation,
+    ConstraintNormalization, NamedDecl *Template,
+    ArrayRef<TemplateArgument> TemplateArgs, SourceRange InstantiationRange)
+    : InstantiatingTemplate(
+          SemaRef, CodeSynthesisContext::ConstraintNormalization,
+          PointOfInstantiation, InstantiationRange, Template, Template,
+          TemplateArgs) {}
 
 void Sema::pushCodeSynthesisContext(CodeSynthesisContext Ctx) {
   Ctx.SavedInNonInstantiationSFINAEContext = InNonInstantiationSFINAEContext;
@@ -747,6 +757,25 @@ void Sema::PrintInstantiationStack() {
                    diag::note_constraint_substitution_here)
           << Active->InstantiationRange;
       break;
+    case CodeSynthesisContext::ConstraintNormalization:
+      TemplateParameterList *TPL;
+      if (auto *TD = dyn_cast<TemplateDecl>(Active->Template))
+        TPL = TD->getTemplateParameters();
+      else if (auto *V
+             = dyn_cast<VarTemplatePartialSpecializationDecl>(Active->Template))
+        TPL = V->getTemplateParameters();
+      else
+        TPL =
+            cast<ClassTemplatePartialSpecializationDecl>(Active->Template)
+                ->getTemplateParameters();
+      Diags.Report(Active->PointOfInstantiation,
+                   diag::note_constraint_normalization_here)
+          << Active->Template
+          << getTemplateArgumentBindingsText(TPL,
+                                             Active->TemplateArgs,
+                                             Active->NumTemplateArgs)
+          << Active->InstantiationRange;
+      break;
     }
   }
 }
@@ -773,6 +802,11 @@ Optional<TemplateDeductionInfo *> Sema::isSFINAEContext() const {
     case CodeSynthesisContext::ConstraintsCheck:
     case CodeSynthesisContext::NestedRequirementConstraintsCheck:
       // This is a template instantiation, so there is no SFINAE.
+      return None;
+
+    case CodeSynthesisContext::ConstraintNormalization:
+      // Substitution failure during normalization means the program is
+      // ill-formed.
       return None;
 
     case CodeSynthesisContext::DefaultTemplateArgumentInstantiation:

@@ -420,6 +420,8 @@ private:
       return "ConstraintsCheck";
     case CodeSynthesisContext::ConstraintSubstitution:
       return "ConstraintSubstitution";
+    case CodeSynthesisContext::ConstraintNormalization:
+      return "ConstraintNormalization";
     case CodeSynthesisContext::RequirementInstantiation:
       return "RequirementInstantiation";
     case CodeSynthesisContext::NestedRequirementConstraintsCheck:

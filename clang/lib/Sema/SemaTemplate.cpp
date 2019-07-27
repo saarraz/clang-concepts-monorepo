@@ -3886,7 +3886,8 @@ static void checkMoreSpecializedThanPrimary(Sema &S, PartialSpecDecl *Partial) {
   // FIXME: Get the TDK from deduction in order to provide better diagnostics
   // for non-substitution-failure issues?
   TemplateDeductionInfo Info(Partial->getLocation());
-  if (S.isMoreSpecializedThanPrimary(Partial, Info))
+  bool Invalid;
+  if (S.isMoreSpecializedThanPrimary(Partial, Info, Invalid))
     return;
 
   auto *Template = Partial->getSpecializedTemplate();
@@ -3904,6 +3905,9 @@ static void checkMoreSpecializedThanPrimary(Sema &S, PartialSpecDecl *Partial) {
            diag::note_partial_spec_not_more_specialized_than_primary)
       << SFINAEArgString;
   }
+
+  if (Invalid)
+    return;
 
   S.Diag(Template->getLocation(), diag::note_template_decl_here);
   SmallVector<const Expr *, 3> PartialAC, TemplateAC;
@@ -7153,17 +7157,19 @@ bool Sema::CheckTemplateArgument(TemplateTemplateParmDecl *Param,
       SmallVector<const Expr *, 3> ParamsAC, TemplateAC;
       Params->getAssociatedConstraints(ParamsAC);
       Template->getAssociatedConstraints(TemplateAC);
+      bool Invalid;
       if (!IsAtLeastAsConstrained(Param, ParamsAC, ParamMLTAL, Template,
-                                  TemplateAC, ArgMLTAL)) {
+                                  TemplateAC, ArgMLTAL, &Invalid)) {
         Diag(Arg.getLocation(),
              diag::err_template_template_parameter_not_at_least_as_constrained)
             << Template << Param << Arg.getSourceRange();
         Diag(Param->getLocation(), diag::note_entity_declared_at) << Param;
         Diag(Template->getLocation(), diag::note_entity_declared_at)
             << Template;
-        MaybeEmitAmbiguousAtomicConstraintsDiagnostic(Param, ParamsAC,
-                                                      ParamMLTAL, Template, 
-                                                      TemplateAC, ArgMLTAL);
+        if (!Invalid)
+          MaybeEmitAmbiguousAtomicConstraintsDiagnostic(Param, ParamsAC,
+                                                        ParamMLTAL, Template,
+                                                        TemplateAC, ArgMLTAL);
         return true;
       }
       return false;

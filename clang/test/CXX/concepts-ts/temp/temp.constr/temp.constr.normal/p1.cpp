@@ -27,12 +27,13 @@ namespace ill_formed_subst {
   template<typename T, typename U>
   concept C2 = C1<typename B<U>::foo>;
   // expected-error@-1 2{{implicit instantiation of undefined template 'ill_formed_subst::B<int>'}}
-  // expected-note@-2 2{{when substituting into C1<typename B<U>::foo>. Make sure concept arguments are valid for any substitution}}
 
   template<typename T> requires C2<T, int>
-  struct A {}; // expected-note {{template is declared here}}
+  // expected-note@-1{{while substituting into constraints of 'C2' [with T = type-parameter-0-0, U = int] here}}
+  struct A {};
 
   template<typename T> requires C2<T, int> && true
+  // expected-note@-1{{while substituting into constraints of 'C2' [with T = type-parameter-0-0, U = int] here}}
   struct A<T> {}; // expected-error {{class template partial specialization is not more specialized than the primary template}}
 }
 
@@ -43,12 +44,13 @@ namespace incorrect_args_after_subst {
   template<typename... Ts>
   concept C2 = C1<Ts...>;
   // expected-error@-1 2{{too many template arguments for concept 'C1'}}
-  // expected-note@-2 2{{when substituting into C1<Ts...>. Make sure concept arguments are valid for any substitution}}
 
   template<typename T> requires C2<T, T>
-  struct A {}; // expected-note{{template is declared here}}
+  // expected-note@-1 {{while substituting into constraints of 'C2' [with Ts = <type-parameter-0-0, type-parameter-0-0>] here}}
+  struct A {};
 
   template<typename T> requires C2<T, T> && true
+  // expected-note@-1 {{while substituting into constraints of 'C2' [with Ts = <type-parameter-0-0, type-parameter-0-0>] here}}
   struct A<T> {}; // expected-error{{class template partial specialization is not more specialized than the primary template}}
 }
 
@@ -67,4 +69,26 @@ namespace maybe_incorrect_args_after_subst {
 
   template<typename... Ts> requires C2<Ts...> && true
   struct A<Ts...> {};
+}
+
+namespace incorrect_subst {
+  template<typename T>
+  concept C = true;
+
+  template<typename U>
+  struct S {
+    template<typename T> requires C<typename U::x>
+    // expected-error@-1{{type 'int' cannot be used prior to '::' because it has no members}}
+    struct A { };
+    // expected-note@-1{{while substituting into constraints of 'A' [with T = int] here}}
+
+    template<typename T> requires C<typename U::x> && true
+    // expected-error@-1{{type 'int' cannot be used prior to '::' because it has no members}}
+    struct A<T> { };
+    // expected-error@-1{{class template partial specialization is not more specialized than the primary template}}
+    // expected-note@-2{{while substituting into constraints of 'A<T>' [with T = int] here}}
+  };
+
+  S<int> s;
+  // expected-note@-1 3{{in instantiation of template class 'incorrect_subst::S<int>' requested here}}
 }

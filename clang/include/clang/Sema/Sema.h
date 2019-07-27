@@ -5960,7 +5960,8 @@ public:
   /// ordering of constraints.
   bool
   IsAtLeastAsConstrained(NamedDecl *D1, ArrayRef<const Expr *> AC1,
-                         NamedDecl *D2, ArrayRef<const Expr *> AC2);
+                         NamedDecl *D2, ArrayRef<const Expr *> AC2,
+                         bool *Invalid = nullptr);
 
   /// \brief Returns whether the given declaration's associated constraints are
   /// more constrained than another declaration's according to the partial
@@ -5968,7 +5969,8 @@ public:
   bool IsAtLeastAsConstrained(NamedDecl *D1, ArrayRef<const Expr *> AC1,
                               const MultiLevelTemplateArgumentList &MLTAL1,
                               NamedDecl *D2, ArrayRef<const Expr *> AC2,
-                              const MultiLevelTemplateArgumentList &MLTAL2);
+                              const MultiLevelTemplateArgumentList &MLTAL2,
+                              bool *Invalid = nullptr);
 
   /// \brief If D1 was not at least as constrained as D2, but would've been if
   /// a pair of atomic constraints involved had been declared in a concept and
@@ -6030,6 +6032,18 @@ public:
   bool EnsureTemplateArgumentListConstraints(TemplateDecl *Template,
                                        ArrayRef<TemplateArgument> TemplateArgs,
                                              SourceRange TemplateIDRange);
+  
+  /// \brief Get the associated constraints of the given template-like
+  /// decalaration in normal form [temp.constr.normal].
+  ///
+  /// \param Template The template to get constraints for (either a
+  /// TemplateDecl, ClassTemplatePartialSpecializationDecl or
+  /// VarTemplatePartialSpecializationDecl).
+  ///
+  /// \returns The NormalizedConstraint representing the associated constraints
+  /// of the given template, or an empty optional if an error occured.
+  llvm::Optional<NormalizedConstraint>
+  getNormalizedAssociatedConstraints(NamedDecl *Template);
 
   /// \brief Emit diagnostics explaining why a constraint expression was deemed
   /// unsatisfied.
@@ -7596,14 +7610,16 @@ public:
                                   SourceLocation Loc);
 
   bool isMoreSpecializedThanPrimary(ClassTemplatePartialSpecializationDecl *T,
-                                    sema::TemplateDeductionInfo &Info);
+                                    sema::TemplateDeductionInfo &Info,
+                                    bool &Invalid);
 
   VarTemplatePartialSpecializationDecl *getMoreSpecializedPartialSpecialization(
       VarTemplatePartialSpecializationDecl *PS1,
       VarTemplatePartialSpecializationDecl *PS2, SourceLocation Loc);
 
   bool isMoreSpecializedThanPrimary(VarTemplatePartialSpecializationDecl *T,
-                                    sema::TemplateDeductionInfo &Info);
+                                    sema::TemplateDeductionInfo &Info,
+                                    bool &Invalid);
 
   bool isTemplateTemplateParameterAtLeastAsSpecializedAs(
       TemplateParameterList *PParam, TemplateDecl *AArg, SourceLocation Loc);
@@ -7709,6 +7725,10 @@ public:
 
       // We are substituting template arguments into a constraint expression.
       ConstraintSubstitution,
+
+      // We are substituting template arguments into a parameter mapping as part
+      // of the constraint normalization process.
+      ConstraintNormalization,
 
       /// Added for Template instantiation observation.
       /// Memoization means we are _not_ instantiating a template because
@@ -7986,6 +8006,15 @@ public:
     InstantiatingTemplate(Sema &SemaRef, SourceLocation PointOfInstantiation,
                           ConstraintSubstitution, NamedDecl *Template,
                           sema::TemplateDeductionInfo &DeductionInfo,
+                          SourceRange InstantiationRange);
+
+    struct ConstraintNormalization {};
+    /// \brief Note that we are normalizing the constraints associated with some
+    /// constrained entity (substitution of template arguments into arguments
+    /// of CSEs might occur).
+    InstantiatingTemplate(Sema &SemaRef, SourceLocation PointOfInstantiation,
+                          ConstraintNormalization, NamedDecl *Template,
+                          ArrayRef<TemplateArgument> TemplateArgs,
                           SourceRange InstantiationRange);
 
     /// \brief Note that we are substituting template arguments into a part of

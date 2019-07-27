@@ -457,324 +457,6 @@ void Sema::DiagnoseUnsatisfiedConstraint(
   }
 }
 
-namespace {
-struct AtomicConstraint {
-  const Expr *ConstraintExpr;
-  llvm::SmallVector<TemplateArgument, 3> ParameterMapping;
-
-  AtomicConstraint(const Expr *ConstraintExpr,
-      ArrayRef<TemplateArgument> ParameterMapping) :
-      ConstraintExpr{ConstraintExpr} {
-    this->ParameterMapping.assign(ParameterMapping.data(),
-                                  ParameterMapping.data() +
-                                  ParameterMapping.size());
-  }
-
-  bool hasMatchingParameterMapping(ASTContext &C,
-                                   const AtomicConstraint &Other) const {
-    if (ParameterMapping.size() != Other.ParameterMapping.size())
-      return false;
-
-    for (unsigned I = 0, S = ParameterMapping.size(); I < S; ++I)
-      if (!C.getCanonicalTemplateArgument(ParameterMapping[I])
-               .structurallyEquals(C.getCanonicalTemplateArgument(
-                   Other.ParameterMapping[I])))
-        return false;
-    return true;
-  }
-
-  bool subsumes(ASTContext &C, const AtomicConstraint &Other) const {
-    // C++ [temp.constr.order] p2
-    //   - an atomic constraint A subsumes another atomic constraint B
-    //     if and only if the A and B are identical [...]
-    //
-    // C++ [temp.constr.atomic] p2
-    //   Two atomic constraints are identical if they are formed from the
-    //   same expression and the targets of the parameter mappings are
-    //   equivalent according to the rules for expressions [...]
-
-    // We do not actually substitute the parameter mappings, therefore the
-    // constraint expressions are the originals, and comparing them will
-    // suffice.
-    if (ConstraintExpr != Other.ConstraintExpr)
-      return false;
-
-    // Check that the parameter lists are identical
-    return hasMatchingParameterMapping(C, Other);
-  }
-};
-
-/// \brief A normalized constraint, as defined in C++ [temp.constr.normal], is
-/// either an atomic constraint, a conjunction of normalized constraints or a
-/// disjunction of normalized constraints.
-struct NormalizedConstraint {
-  enum CompoundConstraintKind { CCK_Conjunction, CCK_Disjunction };
-
-  using CompoundConstraint = llvm::PointerIntPair<
-      std::pair<NormalizedConstraint, NormalizedConstraint> *, 1,
-      CompoundConstraintKind>;
-
-  llvm::PointerUnion<AtomicConstraint *, CompoundConstraint> Constraint;
-
-  NormalizedConstraint(AtomicConstraint *C) : Constraint{C} {};
-  NormalizedConstraint(ASTContext &C, NormalizedConstraint LHS,
-                       NormalizedConstraint RHS, CompoundConstraintKind Kind)
-      : Constraint{CompoundConstraint{
-            new (C) std::pair<NormalizedConstraint, NormalizedConstraint>{LHS,
-                                                                          RHS},
-            Kind}} {};
-
-  CompoundConstraintKind getCompoundKind() const {
-    assert(!isAtomic() && "getCompoundKind called on atomic constraint.");
-    return Constraint.get<CompoundConstraint>().getInt();
-  }
-
-  bool isAtomic() const { return Constraint.is<AtomicConstraint *>(); }
-
-  NormalizedConstraint &getLHS() const {
-    assert(!isAtomic() && "getLHS called on atomic constraint.");
-    return Constraint.get<CompoundConstraint>().getPointer()->first;
-  }
-
-  NormalizedConstraint &getRHS() const {
-    assert(!isAtomic() && "getRHS called on atomic constraint.");
-    return Constraint.get<CompoundConstraint>().getPointer()->second;
-  }
-
-  AtomicConstraint *getAtomicConstraint() const {
-    assert(isAtomic() &&
-           "getAtomicConstraint called on non-atomic constraint.");
-    return Constraint.get<AtomicConstraint *>();
-  }
-  static llvm::Optional<NormalizedConstraint> fromConstraintExpr(Sema &S,
-      NamedDecl *ConstrainedEntity,
-      const Expr *E,
-      const MultiLevelTemplateArgumentList *ParameterMapping = nullptr) {
-    assert(E != nullptr);
-
-    // C++ [temp.constr.normal]p1.1
-    // [...]
-    // - The normal form of an expression (E) is the normal form of E.
-    // [...]
-    if (auto *P = dyn_cast<const ParenExpr>(E))
-      return fromConstraintExpr(S, ConstrainedEntity, P->getSubExpr(),
-                                ParameterMapping);
-    if (auto *BO = dyn_cast<const BinaryOperator>(E)) {
-      if (BO->getOpcode() == BO_LAnd || BO->getOpcode() == BO_LOr) {
-        auto LHS = fromConstraintExpr(S, ConstrainedEntity, BO->getLHS(),
-                                      ParameterMapping);
-        if (!LHS)
-          return llvm::Optional<NormalizedConstraint>{};
-        auto RHS = fromConstraintExpr(S, ConstrainedEntity, BO->getRHS(),
-                                      ParameterMapping);
-        if (!RHS)
-          return llvm::Optional<NormalizedConstraint>{};
-
-        return NormalizedConstraint(
-            S.Context, std::move(*LHS), std::move(*RHS),
-            BO->getOpcode() == BO_LAnd ? CCK_Conjunction : CCK_Disjunction);
-      }
-    } else if (auto *CSE = dyn_cast<const ConceptSpecializationExpr>(E)) {
-      // C++ [temp.constr.normal]p1.1
-      // [...]
-      // The normal form of an id-expression of the form C<A1, A2, ..., AN>,
-      // where C names a concept, is the normal form of the
-      // constraint-expression of C, after substituting A1, A2, ..., AN for C’s
-      // respective template parameters in the parameter mappings in each atomic
-      // constraint. If any such substitution results in an invalid type or
-      // expression, the program is ill-formed; no diagnostic is required.
-      // [...]
-      const ASTTemplateArgumentListInfo *Mapping =
-          CSE->getTemplateArgsAsWritten();
-      if (!ParameterMapping) {
-        // This is a top level CSE.
-        //
-        // template<typename T>
-        // concept C = true;
-        //
-        // template<typename U>
-        // void foo() requires C<U> {} -> Mapping is <U>
-        //
-        llvm::SmallVector<TemplateArgument, 4> TempList;
-        bool InstantiationDependent = false;
-        TemplateArgumentListInfo TALI(Mapping->LAngleLoc, Mapping->RAngleLoc);
-        for (auto &Arg : Mapping->arguments())
-          TALI.addArgument(Arg);
-        bool Failed = S.CheckTemplateArgumentList(CSE->getNamedConcept(),
-            E->getBeginLoc(), TALI, /*PartialTemplateArgs=*/false, TempList,
-            /*UpdateArgsWithConversions=*/false, &InstantiationDependent);
-        // The potential failure case here is this:
-        //
-        // template<typename U>
-        // concept C = true;
-        //
-        // template<typename T>
-        // void foo() requires C<T, T> // The immediate constraint expr
-        //                             // contains a CSE with incorrect no.
-        //                             // of arguments.
-        // {}
-        // This case should have been handled when C<T, T> was parsed.
-        assert(
-            !Failed &&
-            "Unmatched arguments in top level concept specialization "
-            "expression should've been caught while it was being constructed");
-
-        if (InstantiationDependent)
-          // The case is this:
-          //
-          // template<typename U, typename T>
-          // concept C = true;
-          //
-          // template<typename... Ts>
-          // void foo() requires C<Ts...> // The immediate constraint expr
-          //                              // contains a CSE whose parameters
-          //                              // are not mappable to arguments
-          //                              // without concrete values.
-          // {}
-          //
-          // Just treat C<Ts...> as an atomic constraint.
-          return NormalizedConstraint{new (S.Context)
-                                          AtomicConstraint(E, TempList)};
-        MultiLevelTemplateArgumentList MLTAL;
-        MLTAL.addOuterTemplateArguments(TempList);
-        return fromConstraintExpr(S, ConstrainedEntity,
-                                  CSE->getNamedConcept()->getConstraintExpr(),
-                                  &MLTAL);
-      }
-
-      // This is not a top level CSE.
-      //
-      // template<typename T1, typename T2>
-      // concept C1 = true;
-      //
-      // template<typename T, typename U>
-      // concept C2 = C1<U, T>; -> We are here.
-      //                           Mapping is {T1=U, T2=T}
-      //                           ParameterMapping is {T=X, U=Y}
-      //
-      // template<typename X, typename Y>
-      // void foo() requires C2<X, Y> {}
-      //
-      // We would like to substitute ParameterMapping into Mapping, to get
-      // ParameterMapping={T1=Y, T2=X} for the next level down.
-      // Instead of doing the direct substitution of ParameterMapping into
-      // Mapping, we instead substitute ParameterMapping into C1<U, T> and take
-      // the substituted argument list as the ParameterMapping for the next
-      // level down.
-
-      auto DiagnoseSubstitutionError = [&](unsigned int Diag) {
-        S.Diag(CSE->getBeginLoc(), Diag)
-            << const_cast<ConceptSpecializationExpr *>(CSE);
-      };
-
-      TemplateDeductionInfo TDI(E->getBeginLoc());
-      Sema::InstantiatingTemplate Inst(S, E->getBeginLoc(),
-          Sema::InstantiatingTemplate::ConstraintSubstitution{},
-          ConstrainedEntity, TDI, E->getSourceRange());
-
-      ExprResult Result = S.SubstExpr(
-          const_cast<ConceptSpecializationExpr *>(CSE), *ParameterMapping);
-      if (!Result.isUsable() || Result.isInvalid()) {
-        // C++ [temp.constr.normal]
-        // If any such substitution results in an invalid type or
-        // expression, the program is ill-formed; no diagnostic is required.
-
-        // A diagnostic was already emitted from the substitution , but
-        // we'll let the user know why it's not SFINAEd from them.
-        DiagnoseSubstitutionError(
-            diag::note_could_not_normalize_argument_substitution_failed);
-        return llvm::Optional<NormalizedConstraint>{};
-      }
-      Mapping = cast<ConceptSpecializationExpr>(Result.get())
-                           ->getTemplateArgsAsWritten();
-
-      TemplateArgumentListInfo SubstTALI(Mapping->LAngleLoc,
-                                         Mapping->RAngleLoc);
-      for (auto &Arg : Mapping->arguments())
-        SubstTALI.addArgument(Arg);
-      llvm::SmallVector<TemplateArgument, 4> Converted;
-      bool InstantiationDependent;
-      bool Failure = S.CheckTemplateArgumentList(
-          CSE->getNamedConcept(), CSE->getBeginLoc(), SubstTALI,
-          /*PartialTemplateArgs=*/false, Converted,
-          /*UpdateArgsWithConversions=*/true, &InstantiationDependent);
-      MultiLevelTemplateArgumentList MLTAL;
-      MLTAL.addOuterTemplateArguments(Converted);
-
-      // The case is this:
-      //
-      // template<typename T, typename U>
-      // concept C1 = true;
-      //
-      // template<typename... Ts>
-      // concept C2 = C1<Ts...>; // After substituting Ts = {T}, the
-      //                         // resulting argument list does not match
-      //                         // the parameter list.
-      //
-      // template<typename T>
-      // void foo() requires C2<T> {}
-      //
-      // This case should be checked when substituting into C1<Ts...>, and will
-      // be caught by the if above.
-      assert(!Failure &&
-             "Template argument list match should have been checked during "
-             "substitution.");
-      if (InstantiationDependent)
-        // The case is this:
-        //
-        // template<typename T, typename U>
-        // concept C1 = true;
-        //
-        // template<typename... Us>
-        // concept C2 = C1<Us...>; // After substituting Us = {Ts}, we cannot
-        //                         // match arguments to parameters.
-        //
-        // template<typename... Ts>
-        // void foo() requires C2<T...> {}
-        //
-        // Treat the CSE as an atomic expression.
-        return NormalizedConstraint{new (S.Context)
-                                        AtomicConstraint(E, Converted)};
-
-      return fromConstraintExpr(S, ConstrainedEntity,
-                                CSE->getNamedConcept()->getConstraintExpr(),
-                                &MLTAL);
-    }
-    return NormalizedConstraint{
-        new (S.Context) AtomicConstraint(E,
-            ParameterMapping && ParameterMapping->getNumLevels() != 0 ?
-            ParameterMapping->getInnermost() : ArrayRef<TemplateArgument>{})};
-  }
-
-  static llvm::Optional<NormalizedConstraint> fromConstraintExprs(Sema &S,
-      NamedDecl *ConstrainedEntity, ArrayRef<const Expr *> E,
-      const MultiLevelTemplateArgumentList *ParameterMapping = nullptr) {
-    assert(E.size() != 0);
-    auto First = fromConstraintExpr(S, ConstrainedEntity, E[0],
-                                    ParameterMapping);
-    if (E.size() == 1)
-      return First;
-    auto Second = fromConstraintExpr(S, ConstrainedEntity, E[1],
-                                     ParameterMapping);
-    if (!Second)
-      return llvm::Optional<NormalizedConstraint>{};
-    llvm::Optional<NormalizedConstraint> Conjunction;
-    Conjunction.emplace(S.Context, std::move(*First), std::move(*Second),
-                        CCK_Conjunction);
-    for (unsigned I = 2; I < E.size(); ++I) {
-      auto Next = fromConstraintExpr(S, ConstrainedEntity, E[I],
-                                     ParameterMapping);
-      if (!Next)
-        return llvm::Optional<NormalizedConstraint>{};
-      NormalizedConstraint NewConjunction(S.Context, std::move(*Conjunction),
-                                          std::move(*Next), CCK_Conjunction);
-      *Conjunction = std::move(NewConjunction);
-    }
-    return Conjunction;
-  }
-};
-} // namespace
-
 using NormalForm =
     llvm::SmallVector<llvm::SmallVector<AtomicConstraint *, 2>, 4>;
 
@@ -881,7 +563,10 @@ static bool subsumes(Sema &S, NormalizedConstraint &PNormalized,
 }
 
 bool Sema::IsAtLeastAsConstrained(NamedDecl *D1, ArrayRef<const Expr *> AC1,
-                                  NamedDecl *D2, ArrayRef<const Expr *> AC2) {
+                                  NamedDecl *D2, ArrayRef<const Expr *> AC2,
+                                  bool *Invalid) {
+  if (Invalid)
+      *Invalid = false;
   if (AC1.empty())
     return AC2.empty();
   if (AC2.empty())
@@ -897,7 +582,8 @@ bool Sema::IsAtLeastAsConstrained(NamedDecl *D1, ArrayRef<const Expr *> AC1,
       getTemplateInstantiationArgs(cast<Decl>(D1->getDeclContext()));
   MultiLevelTemplateArgumentList MLTAL2 =
       getTemplateInstantiationArgs(cast<Decl>(D2->getDeclContext()));
-  bool Subsumes = IsAtLeastAsConstrained(D1, AC1, MLTAL1, D2, AC2, MLTAL2);
+  bool Subsumes = IsAtLeastAsConstrained(D1, AC1, MLTAL1, D2, AC2, MLTAL2,
+                                         Invalid);
   SubsumptionCache.try_emplace(Key, Subsumes);
   return Subsumes;
 }
@@ -906,7 +592,11 @@ bool
 Sema::IsAtLeastAsConstrained(NamedDecl *D1, ArrayRef<const Expr *> AC1,
                              const MultiLevelTemplateArgumentList &MLTAL1,
                              NamedDecl *D2, ArrayRef<const Expr *> AC2,
-                             const MultiLevelTemplateArgumentList &MLTAL2) {
+                             const MultiLevelTemplateArgumentList &MLTAL2,
+                             bool *Invalid) {
+  if (Invalid)
+    *Invalid = false;
+
   if (AC1.empty())
     return AC2.empty();
   if (AC2.empty())
@@ -914,24 +604,30 @@ Sema::IsAtLeastAsConstrained(NamedDecl *D1, ArrayRef<const Expr *> AC1,
     return true;
 
   auto Normalized1 = NormalizedConstraint::fromConstraintExprs(*this, D1, AC1,
-                                                               &MLTAL1);
-  if (!Normalized1)
-    // Program is ill-formed at this point.
+                                                               MLTAL1);
+  if (!Normalized1) {
+    if (Invalid)
+      *Invalid = true;
     return false;
+  }
 
   auto Normalized2 = NormalizedConstraint::fromConstraintExprs(*this, D2, AC2,
-                                                               &MLTAL2);
-  if (!Normalized2)
-    // Program is ill-formed at this point.
+                                                               MLTAL2);
+  if (!Normalized2) {
+    if (Invalid)
+      *Invalid = true;
     return false;
+  }
 
   bool Subsumes;
   if (subsumes(*this, *Normalized1, *Normalized2, Subsumes,
         [this] (const AtomicConstraint &A, const AtomicConstraint &B) {
           return A.subsumes(Context, B);
-        }))
-    // Program is ill-formed at this point.
+        })) {
+    if (Invalid)
+      *Invalid = true;
     return false;
+  }
   return Subsumes;
 }
 
@@ -974,13 +670,13 @@ bool Sema::MaybeEmitAmbiguousAtomicConstraintsDiagnostic(NamedDecl *D1,
     SFINAETrap Trap(*this);
 
     auto Normalized1 = NormalizedConstraint::fromConstraintExprs(*this, D1, AC1,
-                                                                 &MLTAL1);
+                                                                 MLTAL1);
     if (!Normalized1)
       // Program is ill-formed at this point.
       return false;
 
     auto Normalized2 = NormalizedConstraint::fromConstraintExprs(*this, D2, AC2,
-                                                                 &MLTAL2);
+                                                                 MLTAL2);
     if (!Normalized2)
       // Program is ill-formed at this point.
       return false;
@@ -1293,4 +989,195 @@ NestedRequirement::NestedRequirement(Sema &S, Expr *Constraint,
 
 void NestedRequirement::Diagnose(Sema &S, bool First) const {
   S.DiagnoseUnsatisfiedConstraint(*Satisfaction, First);
+}
+
+llvm::Optional<NormalizedConstraint>
+Sema::getNormalizedAssociatedConstraints(NamedDecl *TemplateLike) {
+  assert(isa<TemplateDecl>(TemplateLike) ||
+         isa<VarTemplatePartialSpecializationDecl>(TemplateLike) ||
+         isa<ClassTemplatePartialSpecializationDecl>(TemplateLike));
+  llvm::SmallVector<const Expr *, 3> AssociatedConstraints;
+  if (auto *TD = dyn_cast<TemplateDecl>(TemplateLike))
+    TD->getAssociatedConstraints(AssociatedConstraints);
+  else if (auto *C =
+               dyn_cast<ClassTemplatePartialSpecializationDecl>(TemplateLike))
+    C->getAssociatedConstraints(AssociatedConstraints);
+  else
+    cast<VarTemplatePartialSpecializationDecl>(TemplateLike)
+        ->getAssociatedConstraints(AssociatedConstraints);
+  MultiLevelTemplateArgumentList TemplateArgs =
+      getTemplateInstantiationArgs(cast<Decl>(TemplateLike->getDeclContext()));
+  return NormalizedConstraint::fromConstraintExprs(*this, TemplateLike,
+                                                   AssociatedConstraints,
+                                                   TemplateArgs);
+}
+
+llvm::Optional<NormalizedConstraint>
+NormalizedConstraint::fromConstraintExpr(Sema &S,
+    NamedDecl *ConstrainedEntity, SourceLocation PointOfInstantiation,
+    const Expr *E,
+    const MultiLevelTemplateArgumentList &ParameterMapping) {
+  assert(E != nullptr);
+
+  // C++ [temp.constr.normal]p1.1
+  // [...]
+  // - The normal form of an expression (E) is the normal form of E.
+  // [...]
+  if (auto *P = dyn_cast<const ParenExpr>(E))
+    return fromConstraintExpr(S, ConstrainedEntity, PointOfInstantiation,
+                              P->getSubExpr(), ParameterMapping);
+  if (auto *BO = dyn_cast<const BinaryOperator>(E)) {
+    if (BO->getOpcode() == BO_LAnd || BO->getOpcode() == BO_LOr) {
+      auto LHS = fromConstraintExpr(S, ConstrainedEntity,
+                                    PointOfInstantiation, BO->getLHS(),
+                                    ParameterMapping);
+      if (!LHS)
+        return llvm::Optional<NormalizedConstraint>{};
+      auto RHS = fromConstraintExpr(S, ConstrainedEntity,
+                                    PointOfInstantiation, BO->getRHS(),
+                                    ParameterMapping);
+      if (!RHS)
+        return llvm::Optional<NormalizedConstraint>{};
+
+      return NormalizedConstraint(
+          S.Context, std::move(*LHS), std::move(*RHS),
+          BO->getOpcode() == BO_LAnd ? CCK_Conjunction : CCK_Disjunction);
+    }
+  } else if (auto *CSE = dyn_cast<const ConceptSpecializationExpr>(E)) {
+    // C++ [temp.constr.normal]p1.1
+    // [...]
+    // The normal form of an id-expression of the form C<A1, A2, ..., AN>,
+    // where C names a concept, is the normal form of the
+    // constraint-expression of C, after substituting A1, A2, ..., AN for C’s
+    // respective template parameters in the parameter mappings in each atomic
+    // constraint. If any such substitution results in an invalid type or
+    // expression, the program is ill-formed; no diagnostic is required.
+    // [...]
+    const ASTTemplateArgumentListInfo *Mapping =
+        CSE->getTemplateArgsAsWritten();
+
+    // template<typename T1, typename T2>
+    // concept C1 = true;
+    //
+    // template<typename T, typename U>
+    // concept C2 = C1<U, T>; -> We are here.
+    //                           Mapping is {T1=U, T2=T}
+    //                           ParameterMapping is {T=X, U=Y}
+    //
+    // template<typename X, typename Y>
+    // void foo() requires C2<X, Y> {}
+    //
+    // We would like to substitute ParameterMapping into Mapping, to get
+    // ParameterMapping={T1=Y, T2=X} for the next level down.
+    // Instead of doing the direct substitution of ParameterMapping into
+    // Mapping, we instead substitute ParameterMapping into C1<U, T> and take
+    // the substituted argument list as the ParameterMapping for the next
+    // level down.
+
+    llvm::Optional<Sema::InstantiatingTemplate> Inst;
+
+    if (ParameterMapping.getNumLevels() != 0)
+        Inst.emplace(S, PointOfInstantiation,
+            Sema::InstantiatingTemplate::ConstraintNormalization{},
+            ConstrainedEntity, ParameterMapping.getInnermost(),
+            SourceRange(PointOfInstantiation));
+
+    ExprResult Result = S.SubstExpr(
+        const_cast<ConceptSpecializationExpr *>(CSE), ParameterMapping);
+    if (!Result.isUsable() || Result.isInvalid())
+      // C++ [temp.constr.normal]
+      // If any such substitution results in an invalid type or
+      // expression, the program is ill-formed; no diagnostic is required.
+      return llvm::Optional<NormalizedConstraint>{};
+
+    Mapping = cast<ConceptSpecializationExpr>(Result.get())
+                         ->getTemplateArgsAsWritten();
+
+    TemplateArgumentListInfo SubstTALI(Mapping->LAngleLoc,
+                                       Mapping->RAngleLoc);
+    for (auto &Arg : Mapping->arguments())
+      SubstTALI.addArgument(Arg);
+    llvm::SmallVector<TemplateArgument, 4> Converted;
+    bool InstantiationDependent;
+    bool Failure = S.CheckTemplateArgumentList(
+        CSE->getNamedConcept(), CSE->getBeginLoc(), SubstTALI,
+        /*PartialTemplateArgs=*/false, Converted,
+        /*UpdateArgsWithConversions=*/true, &InstantiationDependent);
+    MultiLevelTemplateArgumentList MLTAL;
+    MLTAL.addOuterTemplateArguments(Converted);
+
+    // The case is this:
+    //
+    // template<typename T, typename U>
+    // concept C1 = true;
+    //
+    // template<typename... Ts>
+    // concept C2 = C1<Ts...>; // After substituting Ts = {T}, the
+    //                         // resulting argument list does not match
+    //                         // the parameter list.
+    //
+    // template<typename T>
+    // void foo() requires C2<T> {}
+    //
+    // This case should be checked when substituting into C1<Ts...>, and will
+    // be caught by the if above.
+    assert(!Failure &&
+           "Template argument list match should have been checked during "
+           "substitution.");
+    if (InstantiationDependent)
+      // The case is this:
+      //
+      // template<typename T, typename U>
+      // concept C1 = true;
+      //
+      // template<typename... Us>
+      // concept C2 = C1<Us...>; // After substituting Us = {Ts}, we cannot
+      //                         // match arguments to parameters.
+      //
+      // template<typename... Ts>
+      // void foo() requires C2<T...> {}
+      //
+      // Treat the CSE as an atomic expression.
+      return NormalizedConstraint{new (S.Context)
+                                      AtomicConstraint(E, Converted)};
+
+    return fromConstraintExpr(S, CSE->getNamedConcept(), CSE->getBeginLoc(),
+                              CSE->getNamedConcept()->getConstraintExpr(),
+                              MLTAL);
+  }
+  return NormalizedConstraint{
+      new (S.Context) AtomicConstraint(E,
+          ParameterMapping.getNumLevels() != 0 ?
+          ParameterMapping.getInnermost() : ArrayRef<TemplateArgument>{})};
+}
+
+llvm::Optional<NormalizedConstraint>
+NormalizedConstraint::fromConstraintExprs(Sema &S,
+    NamedDecl *ConstrainedEntity, ArrayRef<const Expr *> E,
+    const MultiLevelTemplateArgumentList &ParameterMapping) {
+  assert(E.size() != 0);
+  auto First = fromConstraintExpr(S, ConstrainedEntity,
+                                  ConstrainedEntity->getLocation(), E[0],
+                                  ParameterMapping);
+  if (E.size() == 1)
+    return First;
+  auto Second = fromConstraintExpr(S, ConstrainedEntity,
+                                   ConstrainedEntity->getLocation(), E[1],
+                                   ParameterMapping);
+  if (!Second)
+    return llvm::Optional<NormalizedConstraint>{};
+  llvm::Optional<NormalizedConstraint> Conjunction;
+  Conjunction.emplace(S.Context, std::move(*First), std::move(*Second),
+                      CCK_Conjunction);
+  for (unsigned I = 2; I < E.size(); ++I) {
+    auto Next = fromConstraintExpr(S, ConstrainedEntity,
+                                   ConstrainedEntity->getLocation(), E[I],
+                                   ParameterMapping);
+    if (!Next)
+      return llvm::Optional<NormalizedConstraint>{};
+    NormalizedConstraint NewConjunction(S.Context, std::move(*Conjunction),
+                                        std::move(*Next), CCK_Conjunction);
+    *Conjunction = std::move(NewConjunction);
+  }
+  return Conjunction;
 }

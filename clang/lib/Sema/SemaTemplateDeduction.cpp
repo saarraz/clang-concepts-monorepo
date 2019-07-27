@@ -5242,7 +5242,9 @@ Sema::getMoreSpecializedPartialSpecialization(
 }
 
 bool Sema::isMoreSpecializedThanPrimary(
-    ClassTemplatePartialSpecializationDecl *Spec, TemplateDeductionInfo &Info) {
+    ClassTemplatePartialSpecializationDecl *Spec, TemplateDeductionInfo &Info,
+    bool &Invalid) {
+  Invalid = false;
   ClassTemplateDecl *Primary = Spec->getSpecializedTemplate();
   QualType PrimaryT = Primary->getInjectedClassNameSpecialization();
   QualType PartialT = Spec->getInjectedSpecializationType();
@@ -5252,9 +5254,10 @@ bool Sema::isMoreSpecializedThanPrimary(
     Spec->getAssociatedConstraints(SpecAC);
     bool AtLeastAsConstrainedPrimary = IsAtLeastAsConstrained(Primary,
                                                               PrimaryAC, Spec,
-                                                              SpecAC);
+                                                              SpecAC, &Invalid);
     bool AtLeastAsConstrainedSpec = IsAtLeastAsConstrained(Spec, SpecAC,
-                                                           Primary, PrimaryAC);
+                                                           Primary, PrimaryAC,
+                                                           &Invalid);
     if (AtLeastAsConstrainedPrimary == AtLeastAsConstrainedSpec)
       return false;
     return AtLeastAsConstrainedSpec;
@@ -5304,7 +5307,9 @@ Sema::getMoreSpecializedPartialSpecialization(
 }
 
 bool Sema::isMoreSpecializedThanPrimary(
-    VarTemplatePartialSpecializationDecl *Spec, TemplateDeductionInfo &Info) {
+    VarTemplatePartialSpecializationDecl *Spec, TemplateDeductionInfo &Info,
+    bool &Invalid) {
+  Invalid = false;
   TemplateDecl *Primary = Spec->getSpecializedTemplate();
   // FIXME: Cache the injected template arguments rather than recomputing
   // them for each partial specialization.
@@ -5325,9 +5330,10 @@ bool Sema::isMoreSpecializedThanPrimary(
     Spec->getAssociatedConstraints(SpecAC);
     bool AtLeastAsConstrainedPrimary = IsAtLeastAsConstrained(Primary,
                                                               PrimaryAC, Spec,
-                                                              SpecAC);
+                                                              SpecAC, &Invalid);
     bool AtLeastAsConstrainedSpec = IsAtLeastAsConstrained(Spec, SpecAC,
-                                                           Primary, PrimaryAC);
+                                                           Primary, PrimaryAC,
+                                                           &Invalid);
     if (AtLeastAsConstrainedPrimary == AtLeastAsConstrainedSpec)
       return false;
     return AtLeastAsConstrainedSpec;
