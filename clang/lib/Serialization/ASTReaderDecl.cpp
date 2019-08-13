@@ -2391,6 +2391,8 @@ void ASTDeclReader::VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D) {
     else
       D->setInheritedTypeConstraint(
           Record.readDeclAs<TemplateTypeParmDecl>());
+    if ((D->ExpandedParameterPack = Record.readInt()))
+      D->NumExpanded = Record.readInt();
   }
 
   if (Record.readInt())

@@ -1229,6 +1229,7 @@ class TemplateTypeParmDecl final : public TypeDecl,
   /// Sema creates these on the stack during auto type deduction.
   friend class Sema;
   friend TrailingObjects;
+  friend class ASTDeclReader;
 
   /// Whether this template type parameter was declaration with
   /// the 'typename' keyword.
@@ -1238,6 +1239,14 @@ class TemplateTypeParmDecl final : public TypeDecl,
 
   /// Whether this template type parameter owns a type-constraint construct.
   bool OwnsTypeConstraint : 1;
+
+  /// Whether this non-type template parameter is an "expanded"
+  /// parameter pack, meaning that its type is a pack expansion and we
+  /// already know the set of types that expansion expands to.
+  bool ExpandedParameterPack : 1;
+
+  /// The number of type parameters in an expanded parameter pack.
+  unsigned NumExpanded = 0;
 
   /// The int indicates whether the type constraint was initialized, and if the
   /// pointer is not null, it means that the type constraint was inherited from
@@ -1258,9 +1267,12 @@ class TemplateTypeParmDecl final : public TypeDecl,
 
   TemplateTypeParmDecl(DeclContext *DC, SourceLocation KeyLoc,
                        SourceLocation IdLoc, IdentifierInfo *Id,
-                       bool Typename, bool OwnsTypeConstraint)
+                       bool Typename, bool OwnsTypeConstraint,
+                       Optional<unsigned> NumExpanded)
       : TypeDecl(TemplateTypeParm, DC, IdLoc, Id, KeyLoc), Typename(Typename),
       OwnsTypeConstraint(OwnsTypeConstraint),
+      ExpandedParameterPack(NumExpanded),
+      NumExpanded(NumExpanded ? *NumExpanded : 0),
       TypeConstraintStatus(nullptr,
                            OwnsTypeConstraint ? TCS_Uninitialized : TCS_None) {}
 
@@ -1271,7 +1283,8 @@ public:
                                       unsigned D, unsigned P,
                                       IdentifierInfo *Id, bool Typename,
                                       bool ParameterPack,
-                                      bool OwnsTypeConstraint = false);
+                                      bool OwnsTypeConstraint = false,
+                                      Optional<unsigned> NumExpanded = None);
   static TemplateTypeParmDecl *CreateDeserialized(const ASTContext &C,
                                                   unsigned ID);
   static TemplateTypeParmDecl *CreateDeserialized(const ASTContext &C,
@@ -1341,6 +1354,50 @@ public:
 
   /// Returns whether this is a parameter pack.
   bool isParameterPack() const;
+
+  /// Whether this parameter pack is a pack expansion.
+  ///
+  /// A template type template parameter pack can be a pack expansion if its
+  /// type-constraint contains an unexpanded parameter pack.
+  bool isPackExpansion() const {
+    if (!isParameterPack())
+      return false;
+    if (const TypeConstraint *TC = getTypeConstraint())
+      if (TC->wereArgumentsSpecified())
+        for (const auto &ArgLoc : TC->getTemplateArgsAsWritten()->arguments())
+          if (ArgLoc.getArgument().containsUnexpandedParameterPack())
+            return true;
+    return false;
+  }
+
+  /// Whether this parameter is a template type parameter pack that has a known
+  /// list of different type-constraints at different positions.
+  ///
+  /// A parameter pack is an expanded parameter pack when the original
+  /// parameter pack's type-constraint was itself a pack expansion, and that
+  /// expansion has already been expanded. For example, given:
+  ///
+  /// \code
+  /// template<typename ...Types>
+  /// struct X {
+  ///   template<convertible_to<Types> ...Convertibles>
+  ///   struct Y { /* ... */ };
+  /// };
+  /// \endcode
+  ///
+  /// The parameter pack \c Convertibles has (convertible_to<Types> && ...) as
+  /// its type-constraint. When \c Types is supplied with template arguments by
+  /// instantiating \c X, the instantiation of \c Convertibles becomes an
+  /// expanded parameter pack. For example, instantiating
+  /// \c X<int, unsigned int> results in \c Convertibles being an expanded
+  /// parameter pack of size 2 (use getNumExpansionTypes() to get this number).
+  bool isExpandedParameterPack() const { return ExpandedParameterPack; }
+
+  /// Retrieves the number of parameters in an expanded parameter pack.
+  unsigned getNumExpansionParameters() const {
+    assert(ExpandedParameterPack && "Not an expansion parameter pack");
+    return NumExpanded;
+  }
 
   /// Returns the type constraint associated with this template parameter (if
   /// any).

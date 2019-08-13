@@ -76,6 +76,25 @@ namespace unconstrained {
   static_assert(is_same_v<decltype(f16<int>('c', 1)), type_list<int, int>>);
   static_assert(is_same_v<decltype(f16<int, char>('c', 1)), type_list<int, char>>);
 
+  void f17(auto x, auto y) requires (sizeof(x) > 1);
+  // expected-note@-1{{candidate template ignored: constraints not satisfied [with $0 = char, $1 = int]}}
+  // expected-note@-2{{because 'sizeof (x) > 1' (1 > 1) evaluated to false}}
+  static_assert(is_same_v<decltype(f17('c', 1)), void>);
+  // expected-error@-1{{no matching function for call to 'f17'}}
+  static_assert(is_same_v<decltype(f17<int>('c', 1)), void>);
+  static_assert(is_same_v<decltype(f17<int, char>('c', 1)), void>);
+
+  void f18(auto... x) requires (sizeof...(x) == 2);
+  // expected-note@-1{{candidate template ignored: constraints not satisfied [with $0 = <char, int, int>]}}
+  // expected-note@-2{{candidate template ignored: constraints not satisfied [with $0 = <char>]}}
+  // expected-note@-3{{because 'sizeof...(x) == 2' (1 == 2) evaluated to false}}
+  // expected-note@-4{{because 'sizeof...(x) == 2' (3 == 2) evaluated to false}}
+  static_assert(is_same_v<decltype(f18('c')), void>);
+  // expected-error@-1{{no matching function for call to 'f18'}}
+  static_assert(is_same_v<decltype(f18('c', 1)), void>);
+  static_assert(is_same_v<decltype(f18('c', 1, 2)), void>);
+  // expected-error@-1{{no matching function for call to 'f18'}}
+
   template<typename T>
   struct S {
     constexpr auto f1(auto x, T t) -> decltype(x + t);
@@ -110,6 +129,9 @@ namespace constrained {
   template<typename T>
   concept C = true;
 
+  template<typename T, typename U>
+  concept C2 = true;
+
   void f(C auto x);
   void f(C auto &x);
   void f(const C auto &x);
@@ -120,4 +142,20 @@ namespace constrained {
   void f(C auto &... x);
   void f(const C auto &... x);
   void f(C decltype(auto) x);
+
+  void f(C2<int> auto x);
+  void f(C2<int> auto &x);
+  void f(const C2<int> auto &x);
+  void f(C2<int> auto (*x)(C2<int> auto y)); // expected-error{{'auto' only allowed in top-level function declaration parameters}}
+  void f(C2<int> auto (*x)(int y));
+  void f(C2<int> auto (*x)() -> int); // expected-error{{function with trailing return type must specify return type 'auto', not 'C2<int> auto'}}
+  void f(C2<int> auto... x);
+  void f(C2<int> auto &... x);
+  void f(const C2<int> auto &... x);
+  void f(C2<int> decltype(auto) x);
+
+  struct S {
+    S(C auto);
+    S(C2<int> auto);
+  };
 }

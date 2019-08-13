@@ -8472,6 +8472,13 @@ namespace {
       return TreeTransform::TransformDeclRefExpr(E);
     }
 
+    Decl *TransformDecl(SourceLocation Loc, Decl *D) {
+      for (unsigned I = 0; I != ParameterCount; ++I)
+        if (D == Params[I].Param)
+          return TransformedParams[I];
+      return TreeTransform::TransformDecl(Loc, D);
+    }
+
     ParmVarDecl *
     TransformFunctionTypeParam(ParmVarDecl *OldParm, int indexAdjustment,
                                Optional<unsigned> NumExpansions,
@@ -8524,6 +8531,15 @@ namespace {
           cast<ParmVarDecl>(Params[TransformedParamIndex++].Param);
       assert(OldParm->getType() == DI->getType());
 
+      std::string InventedName;
+      llvm::raw_string_ostream OS(InventedName);
+      auto Name = OldParm->getName();
+      if (Name.empty())
+        OS << "auto:" << Index + 1;
+      else
+        OS << Name << ":auto";
+      OS.flush();
+
       // Create the TemplateTypeParmDecl here to retrieve the corresponding
       // template parameter type. Template parameters are temporarily added
       // to the TU until the associated TemplateDecl is created.
@@ -8531,8 +8547,9 @@ namespace {
           TemplateTypeParmDecl::Create(
               SemaRef.Context, SemaRef.Context.getTranslationUnitDecl(),
               /*KeyLoc=*/SourceLocation(), /*NameLoc=*/OldParm->getLocation(),
-              Depth, Index++, /*Identifier=*/nullptr, /*Typename=*/false,
-              OldParm->isParameterPack(),
+              Depth, Index++,
+              /*Identifier=*/&SemaRef.Context.Idents.get(OS.str()),
+              /*Typename=*/false, OldParm->isParameterPack(),
               /*OwnsTypeConstraint=*/AT->isConstrained());
       CorrespondingTemplateParam->setImplicit();
       InventedTemplateParams.push_back(CorrespondingTemplateParam);
@@ -8548,14 +8565,15 @@ namespace {
         if (AutoTL.wereArgumentsSpecified())
           for (unsigned I = 0, C = AutoTL.getNumArgs(); I != C; ++I)
             TemplateArgs.addArgument(AutoTL.getArgLoc(I));
-        SemaRef.AttachTypeConstraint(AutoTL.getNestedNameSpecifierLoc(),
-            AutoTL.getConceptNameInfo(), AutoTL.getNamedConcept(),
-            AutoTL.wereArgumentsSpecified() ? &TemplateArgs : nullptr,
-            CorrespondingTemplateParam,
-            OldParm->isParameterPack() ?
-            OldParm->getTypeSourceInfo()->getTypeLoc()
-              .getAs<PackExpansionTypeLoc>().getEllipsisLoc() :
-            SourceLocation());
+        if (SemaRef.AttachTypeConstraint(AutoTL.getNestedNameSpecifierLoc(),
+              AutoTL.getConceptNameInfo(), AutoTL.getNamedConcept(),
+              AutoTL.wereArgumentsSpecified() ? &TemplateArgs : nullptr,
+              CorrespondingTemplateParam,
+              OldParm->isParameterPack() ?
+              OldParm->getTypeSourceInfo()->getTypeLoc()
+                .getAs<PackExpansionTypeLoc>().getEllipsisLoc() :
+              SourceLocation()))
+          return nullptr;
       }
 
       TopLevelParameter = IsTopLevelParameter;
@@ -8690,18 +8708,27 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
           if (TemplateParams)
             NewTemplateParams.append(TemplateParams->begin(),
                                      TemplateParams->end());
-          TInfo = cast_or_null<TypeSourceInfo>(
-              AbbreviatedFunctionTemplateParameterReplacer(*this,
-                  NewTemplateParams,
-                  TemplateParams
-                    ? TemplateParams->getDepth()
-                    : getParsingTemplateParameterDepth(),
-                  NewTemplateParams.size(), D.getFunctionTypeInfo().Params)
-                  .ProcessFunctionType(TInfo));
+
+          AbbreviatedFunctionTemplateParameterReplacer Replacer(*this,
+              NewTemplateParams,
+              TemplateParams
+                ? TemplateParams->getDepth()
+                : getParsingTemplateParameterDepth(),
+              NewTemplateParams.size(), D.getFunctionTypeInfo().Params);
+
+          TInfo = Replacer.ProcessFunctionType(TInfo);
           if (!TInfo)
             return nullptr;
           NewFD->setType(TInfo->getType());
           NewFD->setTypeSourceInfo(TInfo);
+
+          if (Expr *TRC = NewFD->getTrailingRequiresClause()) {
+            ExprResult TransRequiresClause = Replacer.TransformExpr(TRC);
+            if (TransRequiresClause.isUsable() &&
+                !TransRequiresClause.isInvalid())
+              NewFD->setTrailingRequiresClause(TransRequiresClause.get());
+          }
+
           R = TInfo->getType();
           TemplateParameterList *NewTPL;
           if (TemplateParams)

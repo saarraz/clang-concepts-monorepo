@@ -1621,6 +1621,9 @@ void ASTDeclWriter::VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D) {
       Record.AddStmt(TC->getImmediatelyDeclaredConstraint());
     } else
       Record.AddDeclRef(D->getInheritedFromTypeConstraintDecl());
+    Record.push_back(D->isExpandedParameterPack());
+    if (D->isExpandedParameterPack())
+      Record.push_back(D->getNumExpansionParameters());
   }
 
   bool OwnsDefaultArg = D->hasDefaultArgument() &&
