@@ -3881,6 +3881,9 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   case DECL_CONCEPT:
     D = ConceptDecl::CreateDeserialized(Context, ID);
     break;
+  case DECL_REQUIRES_EXPR_BODY:
+    D = RequiresExprBodyDecl::CreateDeserialized(Context, ID);
+    break;
   case DECL_STATIC_ASSERT:
     D = StaticAssertDecl::CreateDeserialized(Context, ID);
     break;
