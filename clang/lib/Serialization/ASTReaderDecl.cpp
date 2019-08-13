@@ -383,6 +383,7 @@ namespace clang {
     void VisitNonTypeTemplateParmDecl(NonTypeTemplateParmDecl *D);
     DeclID VisitTemplateDecl(TemplateDecl *D);
     void VisitConceptDecl(ConceptDecl *D);
+    void VisitRequiresExprBodyDecl(RequiresExprBodyDecl *D);
     RedeclarableResult VisitRedeclarableTemplateDecl(RedeclarableTemplateDecl *D);
     void VisitClassTemplateDecl(ClassTemplateDecl *D);
     void VisitBuiltinTemplateDecl(BuiltinTemplateDecl *D);
@@ -2098,6 +2099,9 @@ void ASTDeclReader::VisitConceptDecl(ConceptDecl *D) {
   VisitTemplateDecl(D);
   D->ConstraintExpr = Record.readExpr();
   mergeMergeable(D);
+}
+
+void ASTDeclReader::VisitRequiresExprBodyDecl(RequiresExprBodyDecl *D) {
 }
 
 ASTDeclReader::RedeclarableResult
