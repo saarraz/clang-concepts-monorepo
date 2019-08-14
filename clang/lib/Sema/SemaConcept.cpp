@@ -839,16 +839,8 @@ ExprRequirement::ExprRequirement(SubstitutionDiagnostic *ExprSubstDiag,
 }
 
 ExprRequirement::ReturnTypeRequirement::ReturnTypeRequirement(ASTContext &C,
-    TypeSourceInfo *ExpectedType) :
-    Dependent(ExpectedType->getType()->isInstantiationDependentType()),
-    ContainsUnexpandedParameterPack(
-        ExpectedType->getType()->containsUnexpandedParameterPack()),
-    Value(ExpectedType) {}
-
-ExprRequirement::ReturnTypeRequirement::ReturnTypeRequirement(ASTContext &C,
     TemplateParameterList *TPL, ConceptSpecializationExpr *CSE) :
-    Dependent(false), ContainsUnexpandedParameterPack(false),
-    Value(new (C) TypeConstraintRequirement(TPL, CSE)) {
+    TypeConstraintInfo(TPL, 0), SubstitutedConstraintExpr(CSE) {
   assert(TPL->size() == 1);
   const TypeConstraint *TC =
       cast<TemplateTypeParmDecl>(TPL->getParam(0))->getTypeConstraint();
@@ -857,14 +849,18 @@ ExprRequirement::ReturnTypeRequirement::ReturnTypeRequirement(ASTContext &C,
   auto *Constraint =
       cast_or_null<ConceptSpecializationExpr>(
           TC->getImmediatelyDeclaredConstraint());
-  ContainsUnexpandedParameterPack =
+  bool ContainsUnexpandedParameterPack =
       Constraint->containsUnexpandedParameterPack();
+  bool Dependent = false;
   for (auto &ArgLoc :
-       Constraint->getTemplateArgsAsWritten()->arguments().drop_front(1))
+       Constraint->getTemplateArgsAsWritten()->arguments().drop_front(1)) {
     if (ArgLoc.getArgument().isDependent()) {
       Dependent = true;
       break;
     }
+  }
+  TypeConstraintInfo.setInt((Dependent ? 1 : 0) |
+                            (ContainsUnexpandedParameterPack ? 2 : 0));
 }
 
 ExprRequirement::SatisfactionStatus

@@ -8131,20 +8131,6 @@ Requirement *Sema::ActOnCompoundRequirement(Expr *E,
                                        NoexceptLoc);
 }
 
-Requirement *Sema::ActOnCompoundRequirement(Expr *E, SourceLocation NoexceptLoc,
-                                            TypeSourceInfo *ExpectedType) {
-  if (ExpectedType->getType().getTypePtr()->isUndeducedType()) {
-    auto *Auto = ExpectedType->getType()->getContainedAutoType();
-    Diag(ExpectedType->getTypeLoc().getBeginLoc(),
-         diag::err_auto_not_allowed_in_return_type_requirement)
-        << (unsigned)Auto->getKeyword();
-    return nullptr;
-  }
-  return new (Context) ExprRequirement(*this, E, /*IsSimple=*/false,
-             NoexceptLoc, ExprRequirement::ReturnTypeRequirement(Context,
-                                                                 ExpectedType));
-}
-
 Requirement *
 Sema::ActOnCompoundRequirement(Expr *E, SourceLocation NoexceptLoc,
                                TemplateIdAnnotation *TypeConstraint,

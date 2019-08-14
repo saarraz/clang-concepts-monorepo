@@ -286,28 +286,24 @@ public:
       SS_Satisfied
   };
   class ReturnTypeRequirement {
-      using TypeConstraintRequirement = std::pair<TemplateParameterList *,
-                                                  ConceptSpecializationExpr *>;
-      bool Dependent : 1;
-      bool ContainsUnexpandedParameterPack : 1;
-      llvm::PointerUnion3<TypeConstraintRequirement *, TypeSourceInfo *,
-                          SubstitutionDiagnostic *> Value;
+      llvm::PointerIntPair<
+          llvm::PointerUnion<TemplateParameterList *, SubstitutionDiagnostic *>,
+          2, int>
+          TypeConstraintInfo;
+      ConceptSpecializationExpr *SubstitutedConstraintExpr;
   public:
       friend class ASTStmtReader;
       friend class ASTStmtWriter;
 
       /// \brief No return type requirement was specified.
-      ReturnTypeRequirement() : Dependent(false),
-                                ContainsUnexpandedParameterPack(false) {}
+      ReturnTypeRequirement() : TypeConstraintInfo(nullptr, 0),
+          SubstitutedConstraintExpr(nullptr) {}
 
       /// \brief A return type requirement was specified but it was a
       /// substitution failure.
       ReturnTypeRequirement(SubstitutionDiagnostic *SubstDiag) :
-          Dependent(false), ContainsUnexpandedParameterPack(false),
-          Value(SubstDiag) {}
-
-      /// \brief A 'trailing return type' style return type requirement.
-      ReturnTypeRequirement(ASTContext &C, TypeSourceInfo *ExpectedType);
+          TypeConstraintInfo(SubstDiag, 0),
+          SubstitutedConstraintExpr(nullptr) {}
 
       /// \brief A 'type constraint' style return type requirement.
       /// \param TPL an invented template parameter list containing a single
@@ -319,52 +315,50 @@ public:
       ReturnTypeRequirement(ASTContext &C, TemplateParameterList *TPL,
                             ConceptSpecializationExpr *CSE = nullptr);
 
-      bool isDependent() const { return Dependent; }
-
-      bool containsUnexpandedParameterPack() const {
-        return ContainsUnexpandedParameterPack;
+      bool isDependent() const {
+        return TypeConstraintInfo.getInt() & 1;
       }
 
-      bool isEmpty() const { return Value.isNull(); }
+      bool containsUnexpandedParameterPack() const {
+        return TypeConstraintInfo.getInt() & 2;
+      }
+
+      bool isEmpty() const {
+        return TypeConstraintInfo.getPointer().isNull();
+      }
 
       bool isSubstitutionFailure() const {
-        return Value && Value.is<SubstitutionDiagnostic *>();
+        return !isEmpty() &&
+            TypeConstraintInfo.getPointer().is<SubstitutionDiagnostic *>();
       }
 
       bool isTypeConstraint() const {
-        return Value && Value.is<TypeConstraintRequirement *>();
-      }
-
-      bool isTrailingReturnType() const {
-        return Value && Value.is<TypeSourceInfo *>();
+        return !isEmpty() &&
+            TypeConstraintInfo.getPointer().is<TemplateParameterList *>();
       }
 
       SubstitutionDiagnostic *getSubstitutionDiagnostic() const {
         assert(isSubstitutionFailure());
-        return Value.get<SubstitutionDiagnostic *>();
-      }
-
-      TypeSourceInfo *getTrailingReturnTypeExpectedType() const {
-        assert(isTrailingReturnType());
-        return Value.get<TypeSourceInfo *>();
+        return TypeConstraintInfo.getPointer().get<SubstitutionDiagnostic *>();
       }
 
       const TypeConstraint *getTypeConstraint() const {
         assert(isTypeConstraint());
-        auto &Req = *Value.get<TypeConstraintRequirement *>();
-        return cast<TemplateTypeParmDecl>(Req.first->getParam(0))
+        auto &Req =
+            *TypeConstraintInfo.getPointer().get<TemplateParameterList *>();
+        return cast<TemplateTypeParmDecl>(Req->getParam(0))
             ->getTypeConstraint();
       }
 
       TemplateParameterList *getTypeConstraintTemplateParameterList() const {
         assert(isTypeConstraint());
-        return Value.get<TypeConstraintRequirement *>()->first;
+        return TypeConstraintInfo.getPointer().get<TemplateParameterList *>();
       }
 
       ConceptSpecializationExpr *
       getTypeConstraintSubstitutedConstraintExpr() const {
         assert(isTypeConstraint());
-        return Value.get<TypeConstraintRequirement *>()->second;
+        return SubstitutedConstraintExpr;
       }
 
       SatisfactionStatus calculateSatisfaction(Sema &S, Expr *E);

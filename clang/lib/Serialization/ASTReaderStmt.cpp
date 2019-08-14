@@ -870,7 +870,7 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
     }
     if (!R)
       continue;
-    Requirements.push_back(R);
+    E->Requirements.push_back(R);
   }
   std::copy(Requirements.begin(), Requirements.end(),
             E->getTrailingObjects<Requirement *>());
