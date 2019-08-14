@@ -134,7 +134,7 @@ NamedDecl *Parser::ParseCXXInlineMethodDef(
   LexedMethod* LM = new LexedMethod(this, FnD);
   getCurrentClass().LateParsedDeclarations.push_back(LM);
   LM->TemplateScope = getCurScope()->isTemplateParamScope() ||
-      (isa<FunctionTemplateDecl>(FnD) &&
+      (FnD && isa<FunctionTemplateDecl>(FnD) &&
        cast<FunctionTemplateDecl>(FnD)->isAbbreviated());
   CachedTokens &Toks = LM->Toks;
 
