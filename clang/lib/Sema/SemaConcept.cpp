@@ -1155,6 +1155,20 @@ llvm::Optional<NormalizedConstraint>
 NormalizedConstraint::fromConstraintExprs(Sema &S,
     NamedDecl *ConstrainedEntity, ArrayRef<const Expr *> E,
     const MultiLevelTemplateArgumentList &ParameterMapping) {
+  LocalInstantiationScope InstScope(S);
+  if (auto *FD = dyn_cast<FunctionDecl>(ConstrainedEntity))
+    if (FD->getTrailingRequiresClause() &&
+        ParameterMapping.getNumLevels() != 0) {
+      FunctionDecl *Pattern =
+          FD->getDescribedFunctionTemplate() ?
+          FD->getDescribedFunctionTemplate()
+              ->getInstantiatedFromMemberTemplate()->getTemplatedDecl() :
+          FD->getInstantiatedFromMemberFunction();
+      for (unsigned I = 0; I < FD->param_size(); ++I)
+        InstScope.InstantiatedLocal(Pattern->getParamDecl(I),
+                                    FD->getParamDecl(I));
+    }
+
   assert(E.size() != 0);
   auto First = fromConstraintExpr(S, ConstrainedEntity,
                                   ConstrainedEntity->getLocation(), E[0],
