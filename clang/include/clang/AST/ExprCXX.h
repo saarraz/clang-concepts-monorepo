@@ -4847,6 +4847,8 @@ public:
 ///     [...]
 ///     A requires-expression is a prvalue of type bool [...]
 class RequiresExpr final : public Expr {
+  friend class ASTStmtReader;
+
   bool IsSatisfied;
   SourceLocation RequiresKWLoc;
   RequiresExprBodyDecl *Body;
@@ -4861,12 +4863,12 @@ public:
                ArrayRef<Requirement *> Requirements,
                SourceLocation RBraceLoc);
   RequiresExpr(ASTContext &C, EmptyShell Empty) :
-    RequiresExpr(C, SourceLocation(), nullptr, {}, {}, SourceLocation()) {}
+    Expr(RequiresExprClass, Empty), IsSatisfied(false), RequiresKWLoc(),
+    Body(nullptr), RBraceLoc() {}
 
   void setLocalParameters(ArrayRef<ParmVarDecl *> LocalParameters);
   ArrayRef<ParmVarDecl *> getLocalParameters() const { return LocalParameters; }
 
-  void setBody(RequiresExprBodyDecl *Body) { this->Body = Body; }
   const RequiresExprBodyDecl *getBody() const { return Body; }
   RequiresExprBodyDecl *getBody() { return Body; }
 
@@ -4882,10 +4884,7 @@ public:
   }
 
   SourceLocation getRequiresKWLoc() const { return RequiresKWLoc; }
-  void setRequiresKWLoc(SourceLocation Loc) { RequiresKWLoc = Loc; }
-
   SourceLocation getRBraceLoc() const { return RBraceLoc; }
-  void setRBraceLoc(SourceLocation Loc) { RBraceLoc = Loc; }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == RequiresExprClass;

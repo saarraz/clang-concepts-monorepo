@@ -788,17 +788,12 @@ readSubstitutionDiagnostic(ASTRecordReader &Record) {
 
 void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
   VisitExpr(E);
-  SourceLocation RequiresKWLoc = Record.readSourceLocation();
-  E->setRequiresKWLoc(RequiresKWLoc);
-  auto *Body = cast<RequiresExprBodyDecl>(Record.readDecl());
-  E->setBody(Body);
+  E->RequiresKWLoc = Record.readSourceLocation();
+  E->Body = cast<RequiresExprBodyDecl>(Record.readDecl());
   unsigned NumLocalParameters = Record.readInt();
-  llvm::SmallVector<ParmVarDecl *, 4> LocalParameters;
   for (unsigned i = 0; i < NumLocalParameters; ++i)
-    LocalParameters.push_back(cast<ParmVarDecl>(Record.readDecl()));
-  E->setLocalParameters(LocalParameters);
+    E->LocalParameters.push_back(cast<ParmVarDecl>(Record.readDecl()));
   unsigned NumRequirements = Record.readInt();
-  llvm::SmallVector<Requirement *, 4> Requirements;
   for (unsigned i = 0; i < NumRequirements; ++i) {
     auto RK = static_cast<Requirement::RequirementKind>(Record.readInt());
     Requirement *R = nullptr;
@@ -877,11 +872,9 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
     }
     if (!R)
       continue;
-    Requirements.push_back(R);
+    E->Requirements.push_back(R);
   }
-  E->setRequirements(Requirements);
-  SourceLocation RBraceLoc = Record.readSourceLocation();
-  E->setRBraceLoc(RBraceLoc);
+  E->RBraceLoc = Record.readSourceLocation();
 }
 
 void ASTStmtReader::VisitArraySubscriptExpr(ArraySubscriptExpr *E) {
