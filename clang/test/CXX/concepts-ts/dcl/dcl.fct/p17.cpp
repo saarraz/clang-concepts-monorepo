@@ -11,8 +11,8 @@ namespace unconstrained {
   static_assert(is_same_v<decltype(f1('c')), char>);
 
   decltype(auto) f2(auto &x) { return x; }
-  // expected-note@-1{{candidate function [with $0 = int] not viable: expects an l-value for 1st argument}}
-  // expected-note@-2{{candidate function [with $0 = char] not viable: expects an l-value for 1st argument}}
+  // expected-note@-1{{candidate function [with x:auto = int] not viable: expects an l-value for 1st argument}}
+  // expected-note@-2{{candidate function [with x:auto = char] not viable: expects an l-value for 1st argument}}
   static_assert(is_same_v<decltype(f2(1)), int &>); // expected-error{{no matching function for call to 'f2'}}
   static_assert(is_same_v<decltype(f2('c')), char &>); // expected-error{{no matching function for call to 'f2'}}
 
@@ -46,7 +46,7 @@ namespace unconstrained {
   static_assert(is_same_v<decltype(f8('c', 1)), int>);
 
   decltype(auto) f9(auto &... x) { return (x, ...); }
-  // expected-note@-1{{candidate function [with $0 = <int (), int>] not viable: expects an l-value for 2nd argument}}
+  // expected-note@-1{{candidate function [with x:auto = <int (), int>] not viable: expects an l-value for 2nd argument}}
   using f9c1 = decltype(f9(return_int, 1)); // expected-error{{no matching function for call to 'f9'}}
 
   decltype(auto) f11(decltype(auto) x) { return x; } // expected-error{{'decltype(auto)' not allowed in function prototype}}
@@ -77,7 +77,7 @@ namespace unconstrained {
   static_assert(is_same_v<decltype(f16<int, char>('c', 1)), type_list<int, char>>);
 
   void f17(auto x, auto y) requires (sizeof(x) > 1);
-  // expected-note@-1{{candidate template ignored: constraints not satisfied [with $0 = char, $1 = int]}}
+  // expected-note@-1{{candidate template ignored: constraints not satisfied [with x:auto = char, y:auto = int]}}
   // expected-note@-2{{because 'sizeof (x) > 1' (1 > 1) evaluated to false}}
   static_assert(is_same_v<decltype(f17('c', 1)), void>);
   // expected-error@-1{{no matching function for call to 'f17'}}
@@ -85,8 +85,8 @@ namespace unconstrained {
   static_assert(is_same_v<decltype(f17<int, char>('c', 1)), void>);
 
   void f18(auto... x) requires (sizeof...(x) == 2);
-  // expected-note@-1{{candidate template ignored: constraints not satisfied [with $0 = <char, int, int>]}}
-  // expected-note@-2{{candidate template ignored: constraints not satisfied [with $0 = <char>]}}
+  // expected-note@-1{{candidate template ignored: constraints not satisfied [with x:auto = <char, int, int>]}}
+  // expected-note@-2{{candidate template ignored: constraints not satisfied [with x:auto = <char>]}}
   // expected-note@-3{{because 'sizeof...(x) == 2' (1 == 2) evaluated to false}}
   // expected-note@-4{{because 'sizeof...(x) == 2' (3 == 2) evaluated to false}}
   static_assert(is_same_v<decltype(f18('c')), void>);
