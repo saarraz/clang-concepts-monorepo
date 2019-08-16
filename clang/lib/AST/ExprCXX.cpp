@@ -1677,7 +1677,7 @@ ConceptSpecializationExpr::ConceptSpecializationExpr(const ASTContext &C,
     DeclarationNameInfo ConceptNameInfo, NamedDecl *FoundDecl,
     ConceptDecl *NamedConcept, const ASTTemplateArgumentListInfo *ArgsAsWritten,
     ArrayRef<TemplateArgument> ConvertedArgs,
-    const ConstraintSatisfaction &Satisfaction)
+    const ConstraintSatisfaction *Satisfaction)
     : Expr(ConceptSpecializationExprClass, C.BoolTy, VK_RValue, OK_Ordinary,
            /*TypeDependent=*/false,
            // All the flags below are set in setTemplateArguments.
@@ -1686,7 +1686,9 @@ ConceptSpecializationExpr::ConceptSpecializationExpr(const ASTContext &C,
       ConceptReference(NNS, TemplateKWLoc, ConceptNameInfo, FoundDecl,
                        NamedConcept, ArgsAsWritten),
       NumTemplateArgs(ConvertedArgs.size()),
-      Satisfaction(ASTConstraintSatisfaction::Create(C, Satisfaction)) {
+      Satisfaction(
+          Satisfaction ? ASTConstraintSatisfaction::Create(C, *Satisfaction)
+          : nullptr) {
   setTemplateArguments(ArgsAsWritten, ConvertedArgs);
 }
 
@@ -1704,6 +1706,7 @@ void ConceptSpecializationExpr::setTemplateArguments(
   bool IsDependent = false;
   bool IsInstantiationDependent = false;
   bool ContainsUnexpandedParameterPack = false;
+  this->ArgsAsWritten = ArgsAsWritten;
   for (const TemplateArgumentLoc& LocInfo : ArgsAsWritten->arguments()) {
     if (LocInfo.getArgument().isDependent()) {
       IsDependent = true;
@@ -1724,6 +1727,7 @@ void ConceptSpecializationExpr::setTemplateArguments(
   setValueDependent(IsDependent);
   setInstantiationDependent(IsInstantiationDependent);
   setContainsUnexpandedParameterPack(ContainsUnexpandedParameterPack);
+  assert(IsDependent == (Satisfaction == nullptr));
 }
 
 ConceptSpecializationExpr *
@@ -1735,7 +1739,7 @@ ConceptSpecializationExpr::Create(const ASTContext &C,
                                   ConceptDecl *NamedConcept,
                                const ASTTemplateArgumentListInfo *ArgsAsWritten,
                                   ArrayRef<TemplateArgument> ConvertedArgs,
-                                  const ConstraintSatisfaction &Satisfaction) {
+                                  const ConstraintSatisfaction *Satisfaction) {
   void *Buffer = C.Allocate(totalSizeToAlloc<TemplateArgument>(
                                 ConvertedArgs.size()));
   return new (Buffer) ConceptSpecializationExpr(C, NNS, TemplateKWLoc,

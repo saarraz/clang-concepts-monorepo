@@ -772,9 +772,10 @@ void ASTStmtReader::VisitConceptSpecializationExpr(
   for (unsigned I = 0; I < NumTemplateArgs; ++I)
     Args.push_back(Record.readTemplateArgument());
   E->setTemplateArguments(ArgsAsWritten, Args);
-  E->Satisfaction =
-      ASTConstraintSatisfaction::Create(Record.getContext(),
-                                        readConstraintSatisfaction(Record));
+  if (!E->isValueDependent())
+    E->Satisfaction =
+        ASTConstraintSatisfaction::Create(Record.getContext(),
+                                          readConstraintSatisfaction(Record));
 }
 
 static Requirement::SubstitutionDiagnostic *

@@ -685,7 +685,7 @@ canonicalizeImmediatelyDeclaredConstraint(const ASTContext &C, Expr *IDC,
       C, NestedNameSpecifierLoc(), SourceLocation(),
       DeclarationNameInfo(CSE->getNamedConcept()->getDeclName(),
                           SourceLocation()), nullptr, CSE->getNamedConcept(),
-      CSE->getTemplateArgsAsWritten(), NewConverted, ConstraintSatisfaction());
+      CSE->getTemplateArgsAsWritten(), NewConverted, nullptr);
 
   if (auto *OrigFold = dyn_cast<CXXFoldExpr>(IDC))
     NewIDC = new (C) CXXFoldExpr(OrigFold->getType(), SourceLocation(), NewIDC,

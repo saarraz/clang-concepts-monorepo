@@ -4778,7 +4778,7 @@ protected:
                             NamedDecl *FoundDecl, ConceptDecl *NamedConcept,
                             const ASTTemplateArgumentListInfo *ArgsAsWritten,
                             ArrayRef<TemplateArgument> ConvertedArgs,
-                            const ConstraintSatisfaction &Satisfaction);
+                            const ConstraintSatisfaction *Satisfaction);
 
   ConceptSpecializationExpr(EmptyShell Empty, unsigned NumTemplateArgs);
 
@@ -4790,7 +4790,7 @@ public:
          NamedDecl *FoundDecl, ConceptDecl *NamedConcept,
          const ASTTemplateArgumentListInfo *ArgsAsWritten,
          ArrayRef<TemplateArgument> ConvertedArgs,
-         const ConstraintSatisfaction &Satisfaction);
+         const ConstraintSatisfaction *Satisfaction);
 
   static ConceptSpecializationExpr *
   Create(ASTContext &C, EmptyShell Empty, unsigned NumTemplateArgs);

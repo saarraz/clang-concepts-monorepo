@@ -2386,8 +2386,9 @@ void ASTDeclReader::VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D) {
         DeclarationNameInfo DN;
         Record.readDeclarationNameInfo(DN);
         ConceptDecl *NamedConcept = cast<ConceptDecl>(Record.readDecl());
-        const ASTTemplateArgumentListInfo *ArgsAsWritten =
-            Record.readASTTemplateArgumentListInfo();
+        const ASTTemplateArgumentListInfo *ArgsAsWritten = nullptr;
+        if (Record.readInt())
+          ArgsAsWritten = Record.readASTTemplateArgumentListInfo();
         Expr *ImmediatelyDeclaredConstraint = Record.readExpr();
         D->setTypeConstraint(NNS, DN, /*FoundDecl=*/nullptr, NamedConcept,
                              ArgsAsWritten, ImmediatelyDeclaredConstraint);
