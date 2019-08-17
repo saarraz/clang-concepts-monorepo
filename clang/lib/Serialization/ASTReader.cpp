@@ -7055,7 +7055,6 @@ void TypeLocReader::VisitAutoTypeLoc(AutoTypeLoc TL) {
     TL.setNestedNameSpecifierLoc(ReadNestedNameSpecifierLoc());
     TL.setTemplateKWLoc(ReadSourceLocation());
     TL.setConceptNameLoc(ReadSourceLocation());
-    TL.setFoundDecl(Reader->ReadDeclAs<NamedDecl>(*F, Record, Idx));
     TL.setLAngleLoc(ReadSourceLocation());
     TL.setRAngleLoc(ReadSourceLocation());
     for (unsigned i = 0, e = TL.getNumArgs(); i != e; ++i)

@@ -773,7 +773,6 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
     Record.AddNestedNameSpecifierLoc(TL.getNestedNameSpecifierLoc());
     Record.AddSourceLocation(TL.getTemplateKWLoc());
     Record.AddSourceLocation(TL.getConceptNameLoc());
-    Record.AddDeclRef(TL.getFoundDecl());
     Record.AddSourceLocation(TL.getLAngleLoc());
     Record.AddSourceLocation(TL.getRAngleLoc());
     for (unsigned I = 0; I < TL.getNumArgs(); ++I)
