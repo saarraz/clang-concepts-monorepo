@@ -766,16 +766,16 @@ void ASTStmtReader::VisitConceptSpecializationExpr(
   Record.readDeclarationNameInfo(E->ConceptName);
   E->FoundDecl = ReadDeclAs<NamedDecl>();
   E->NamedConcept = ReadDeclAs<ConceptDecl>();
+  if (!E->isValueDependent())
+    E->Satisfaction =
+        ASTConstraintSatisfaction::Create(Record.getContext(),
+                                          readConstraintSatisfaction(Record));
   const ASTTemplateArgumentListInfo *ArgsAsWritten =
       Record.readASTTemplateArgumentListInfo();
   llvm::SmallVector<TemplateArgument, 4> Args;
   for (unsigned I = 0; I < NumTemplateArgs; ++I)
     Args.push_back(Record.readTemplateArgument());
   E->setTemplateArguments(ArgsAsWritten, Args);
-  if (!E->isValueDependent())
-    E->Satisfaction =
-        ASTConstraintSatisfaction::Create(Record.getContext(),
-                                          readConstraintSatisfaction(Record));
 }
 
 static Requirement::SubstitutionDiagnostic *

@@ -429,11 +429,11 @@ void ASTStmtWriter::VisitConceptSpecializationExpr(
   Record.AddDeclarationNameInfo(E->getConceptNameInfo());
   Record.AddDeclRef(E->getFoundDecl());
   Record.AddDeclRef(E->getNamedConcept());
+  if (!E->isValueDependent())
+    addConstraintSatisfaction(Record, E->getSatisfaction());
   Record.AddASTTemplateArgumentListInfo(E->getTemplateArgsAsWritten());
   for (const TemplateArgument &Arg : TemplateArgs)
     Record.AddTemplateArgument(Arg);
-  if (!E->isValueDependent())
-    addConstraintSatisfaction(Record, E->getSatisfaction());
 
   Code = serialization::EXPR_CONCEPT_SPECIALIZATION;
 }

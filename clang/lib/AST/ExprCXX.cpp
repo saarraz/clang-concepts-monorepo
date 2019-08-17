@@ -1695,7 +1695,7 @@ ConceptSpecializationExpr::ConceptSpecializationExpr(const ASTContext &C,
 ConceptSpecializationExpr::ConceptSpecializationExpr(EmptyShell Empty,
     unsigned NumTemplateArgs)
     : Expr(ConceptSpecializationExprClass, Empty), ConceptReference(),
-      NumTemplateArgs(NumTemplateArgs) { }
+      NumTemplateArgs(NumTemplateArgs), Satisfaction(nullptr) { }
 
 void ConceptSpecializationExpr::setTemplateArguments(
     const ASTTemplateArgumentListInfo *ArgsAsWritten,
