@@ -584,7 +584,7 @@ TemplateTypeParmDecl::CreateDeserialized(const ASTContext &C, unsigned ID,
   return new (C, ID,
               additionalSizeToAlloc<TypeConstraint>(OwnsTypeConstraint ? 1 : 0))
          TemplateTypeParmDecl(nullptr, SourceLocation(), SourceLocation(),
-                              nullptr, false, false, None);
+                              nullptr, false, OwnsTypeConstraint, None);
 }
 
 SourceLocation TemplateTypeParmDecl::getDefaultArgumentLoc() const {
