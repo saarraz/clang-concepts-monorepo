@@ -750,7 +750,11 @@ Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
                                const TemplateArgumentListInfo *TemplateArgs,
                                const Scope *S,
                                ActOnMemberAccessExtraArgs *ExtraArgs) {
-  if (BaseType->isDependentType() ||
+  bool IsUndeducedAuto = false;
+  if (AutoType *AT = BaseType->getContainedAutoType())
+    if (!AT->isDeduced())
+      IsUndeducedAuto = true;
+  if (BaseType->isDependentType() || IsUndeducedAuto ||
       (SS.isSet() && isDependentScopeSpecifier(SS)))
     return ActOnDependentMemberExpr(Base, BaseType,
                                     IsArrow, OpLoc,

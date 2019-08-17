@@ -776,7 +776,6 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
     Record.AddDeclRef(TL.getFoundDecl());
     Record.AddSourceLocation(TL.getLAngleLoc());
     Record.AddSourceLocation(TL.getRAngleLoc());
-    Record.push_back(TL.getNumArgs());
     for (unsigned I = 0; I < TL.getNumArgs(); ++I)
       Record.AddTemplateArgumentLocInfo(TL.getTypePtr()->getArg(I).getKind(),
                                         TL.getArgLocInfo(I));
