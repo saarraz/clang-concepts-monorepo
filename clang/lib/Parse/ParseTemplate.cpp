@@ -697,12 +697,19 @@ bool Parser::TryAnnotateTypeConstraint(CXXScopeSpec &SS) {
         static_cast<TemplateIdAnnotation *>(Tok.getAnnotationValue());
     return ExistingAnnot->Kind == TNK_Concept_template;
   }
-  if(Tok.isNot(tok::identifier))
-    return false;
 
   UnqualifiedId PossibleConceptName;
-  PossibleConceptName.setIdentifier(Tok.getIdentifierInfo(),
-                                    Tok.getLocation());
+  if (Tok.is(tok::annot_cxxscope)) {
+    if (NextToken().isNot(tok::identifier))
+      return false;
+    PossibleConceptName.setIdentifier(NextToken().getIdentifierInfo(),
+                                      NextToken().getLocation());
+  } else {
+    if (Tok.isNot(tok::identifier))
+      return false;
+    PossibleConceptName.setIdentifier(Tok.getIdentifierInfo(),
+                                      Tok.getLocation());
+  }
 
   TemplateTy PossibleConcept;
   bool MemberOfUnknownSpecialization = false;
@@ -717,6 +724,9 @@ bool Parser::TryAnnotateTypeConstraint(CXXScopeSpec &SS) {
          && "Member when we only allowed namespace scope qualifiers??");
   if (!PossibleConcept || TNK != TNK_Concept_template)
     return false;
+
+  if (Tok.is(tok::annot_cxxscope))
+    ConsumeAnnotationToken();
 
   // At this point we're sure we're dealing with a constrained parameter. It
   // may or may not have a template parameter list following the concept name.
