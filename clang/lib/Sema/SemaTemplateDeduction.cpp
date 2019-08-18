@@ -4371,7 +4371,7 @@ namespace {
       // auto type deduced as T" in order for [temp.deduct.call]p3 to apply.
       //
       // FIXME: Is this still necessary?
-      if (!UseTypeSugar)
+      if (!UseTypeSugar && !Replacement.isNull())
         return TransformDesugared(TLB, TL);
 
       QualType Result = SemaRef.Context.getAutoType(
@@ -4385,7 +4385,7 @@ namespace {
 
     QualType TransformDeducedTemplateSpecializationType(
         TypeLocBuilder &TLB, DeducedTemplateSpecializationTypeLoc TL) {
-      if (!UseTypeSugar)
+      if (!UseTypeSugar && !Replacement.isNull())
         return TransformDesugared(TLB, TL);
 
       QualType Result = SemaRef.Context.getDeducedTemplateSpecializationType(

@@ -8487,6 +8487,23 @@ namespace {
           TreeTransform::TransformFunctionTypeParam(OldParm, indexAdjustment,
                                                     NumExpansions,
                                                     ExpectParameterPack);
+      // Mark the (new) default argument as uninstantiated (if any).
+      if (OldParm->hasUninstantiatedDefaultArg()) {
+        Expr *Arg = OldParm->getUninstantiatedDefaultArg();
+        ExprResult TransformedArg = TransformExpr(Arg);
+        if (TransformedArg.isInvalid())
+          return nullptr;
+        NewParm->setUninstantiatedDefaultArg(TransformedArg.get());
+      } else if (Expr *Arg = OldParm->getDefaultArg()) {
+        ExprResult TransformedArg = TransformExpr(Arg);
+        if (TransformedArg.isInvalid())
+          return nullptr;
+        NewParm->setDefaultArg(TransformedArg.get());
+      }
+
+      if (OldParm->hasUnparsedDefaultArg())
+        NewParm->setUnparsedDefaultArg();
+      NewParm->setHasInheritedDefaultArg(OldParm->hasInheritedDefaultArg());
       if (TransformingParameters && TopLevelParameter)
         TransformedParams.push_back(NewParm);
       return NewParm;

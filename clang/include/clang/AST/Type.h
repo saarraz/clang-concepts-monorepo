@@ -4813,7 +4813,8 @@ public:
     return !isCanonicalUnqualified() ? getCanonicalTypeInternal() : QualType();
   }
   bool isDeduced() const {
-    return !isCanonicalUnqualified() || isDependentType();
+    return !isCanonicalUnqualified() ||
+        (isDependentType() && !getDeducedType().isNull());
   }
 
   static bool classof(const Type *T) {

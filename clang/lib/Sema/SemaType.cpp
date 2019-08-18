@@ -2983,6 +2983,12 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
       if (!SemaRef.getLangOpts().ConceptsTS || !Auto ||
           Auto->getKeyword() != AutoTypeKeyword::Auto)
         Error = 0;
+      else
+        // This is an auto in a function prototype - mark it as dependent here
+        // so that expressions and types that depend on it are created as
+        // dependent, and later replace it by an actual dependent type when we
+        // form the function.
+        T = state.ReplaceAutoType(T, QualType());
       break;
     case DeclaratorContext::RequiresExprContext:
       Error = 21;
