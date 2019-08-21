@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TypeLocBuilder.h"
+#include "TreeTransform.h"
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTMutationListener.h"
@@ -2907,6 +2908,25 @@ static void diagnoseRedundantReturnTypeQualifiers(Sema &S, QualType RetTy,
                               D.getDeclSpec().getUnalignedSpecLoc());
 }
 
+namespace {
+  struct DependentAutoMarker : TreeTransform<DependentAutoMarker> {
+    using TreeTransform::TreeTransform;
+
+    QualType TransformAutoType(TypeLocBuilder &TLB, AutoTypeLoc TL) {
+      QualType Result =
+          SemaRef.Context.getAutoType(
+              TL.getTypePtr()->getDeducedType(), TL.getAutoKeyword(),
+              /*IsDependent=*/true,
+              TL.getTypePtr()->containsUnexpandedParameterPack(),
+              TL.getNamedConcept(),
+              TL.getTypePtr()->getTypeConstraintArguments());
+      auto NewTL = TLB.push<AutoTypeLoc>(Result);
+      NewTL.copy(TL);
+      return Result;
+    }
+  };
+}
+
 static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
                                              TypeSourceInfo *&ReturnTypeInfo) {
   Sema &SemaRef = state.getSema();
@@ -2984,11 +3004,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
           Auto->getKeyword() != AutoTypeKeyword::Auto)
         Error = 0;
       else
-        // This is an auto in a function prototype - mark it as dependent here
-        // so that expressions and types that depend on it are created as
-        // dependent, and later replace it by an actual dependent type when we
-        // form the function.
-        T = state.ReplaceAutoType(T, QualType());
+        T = DependentAutoMarker(SemaRef).TransformType(T);
       break;
     case DeclaratorContext::RequiresExprContext:
       Error = 21;

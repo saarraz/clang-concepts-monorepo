@@ -95,14 +95,6 @@ namespace unconstrained {
   static_assert(is_same_v<decltype(f18('c', 1, 2)), void>);
   // expected-error@-1{{no matching function for call to 'f18'}}
 
-  struct A { static constexpr int a = 2; };
-  void f19(auto x = A{}, auto y = 1) requires (x.a > 1);
-  // expected-note@-1{{candidate template ignored: constraints not satisfied [with x:auto = int, y:auto = int]}}
-  // expected-note@-3{{because 'sizeof...(x) == 2' (1 == 2) evaluated to false}}
-  static_assert(is_same_v<decltype(f19()), void>);
-  static_assert(is_same_v<decltype(f19(1)), void>);
-  // expected-error@-1{{no matching function for call to 'f19'}}
-
   template<typename T>
   struct S {
     constexpr auto f1(auto x, T t) -> decltype(x + t);

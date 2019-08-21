@@ -8520,8 +8520,10 @@ namespace {
       TopLevelParameter = false;
 
       AutoType *AT = DI->getType()->getContainedAutoType();
-      if (!AT || AT->isDeduced() || !IsTopLevelParameter) {
-        if (AT && !AT->isDeduced()) {
+      bool WasATDeduced = AT && AT->isDeduced() &&
+          !AT->getDeducedType().isNull();
+      if (!AT || WasATDeduced || !IsTopLevelParameter) {
+        if (AT && !WasATDeduced) {
           // This means 'auto' or similar was used in the parameter of a
           // function type which is not the top-level parameter of the
           // abbreviated function template (e.g. 'void foo(int (*x)(auto));').
