@@ -1422,6 +1422,14 @@ public:
                          const ASTTemplateArgumentListInfo *ArgsAsWritten,
                          Expr *ImmediatelyDeclaredConstraint);
 
+  /// Indicate that this parameter had an erroneous type constraint.
+  /// Either this function or setTypeConstraint must be called for parameters
+  /// that own type constraints.
+  void setInvalidTypeConstraint() {
+    setInvalidDecl();
+    TypeConstraintStatus.setInt(TCS_None);
+  }
+
   /// Determine whether this template parameter has a type-constraint.
   bool hasTypeConstraint() const {
     return TypeConstraintStatus.getInt() != TCS_None;

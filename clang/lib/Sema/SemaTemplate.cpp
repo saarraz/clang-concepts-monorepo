@@ -1152,8 +1152,10 @@ bool Sema::AttachTypeConstraint(NestedNameSpecifierLoc NS,
                 ConstraintArgs.addArgument(ArgLoc);
           }, EllipsisLoc);
   if (ImmediatelyDeclaredConstraint.isInvalid() ||
-     !ImmediatelyDeclaredConstraint.isUsable())
+     !ImmediatelyDeclaredConstraint.isUsable()) {
+    ConstrainedParameter->setInvalidTypeConstraint();
     return true;
+  }
 
   ConstrainedParameter->setTypeConstraint(NS, NameInfo,
                                           /*FoundDecl=*/NamedConcept,
