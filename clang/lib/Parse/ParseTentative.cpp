@@ -1521,7 +1521,12 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
     // We have a placeholder-constraint (we check for 'auto' or 'decltype' to
     // distinguish 'C<int>;' from 'C<int> auto c = 1;')
     if (TemplateId->Kind == TNK_Concept_template &&
-        NextToken().isOneOf(tok::kw_auto, tok::kw_decltype))
+        NextToken().isOneOf(tok::kw_auto, tok::kw_decltype,
+            // If we have an identifier here, the user probably forgot the
+            // 'auto' in the placeholder constraint, e.g. 'C<int> x = 2;'
+            // This will be diagnosed nicely later, so disambiguate as a
+            // declaration.
+            tok::identifier))
       return TPResult::True;
     if (TemplateId->Kind != TNK_Type_template)
       return TPResult::False;
@@ -1536,6 +1541,9 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
     if (TryAnnotateTypeOrScopeToken())
       return TPResult::Error;
     if (!Tok.is(tok::annot_typename)) {
+      if (Tok.is(tok::annot_template_id))
+        // Probably a type-constraint
+        return isCXXDeclarationSpecifier(BracedCastResult, InvalidAsDeclSpec);
       // If the next token is an identifier or a type qualifier, then this
       // can't possibly be a valid expression either.
       if (Tok.is(tok::annot_cxxscope) && NextToken().is(tok::identifier)) {

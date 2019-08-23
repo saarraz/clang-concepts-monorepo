@@ -1713,6 +1713,19 @@ Parser::TryAnnotateName(bool IsAddressOfOperand,
       return ANK_Error;
     return ANK_Success;
   }
+  case Sema::NC_Concept: {
+    if (Next.is(tok::less))
+      // We have a concept name followed by '<'.
+      ConsumeToken();
+    UnqualifiedId Id;
+    Id.setIdentifier(Name, NameLoc);
+    if (AnnotateTemplateIdToken(
+            TemplateTy::make(Classification.getTemplateName()),
+            Classification.getTemplateNameKind(), SS, SourceLocation(), Id,
+            /*AllowTypeAnnotation=*/false, /*TypeConstraint=*/true))
+      return ANK_Error;
+    return ANK_Success;
+  }
 
   case Sema::NC_NestedNameSpecifier:
     llvm_unreachable("already parsed nested name specifier");
@@ -1968,6 +1981,9 @@ bool Parser::TryAnnotateTypeOrScopeTokenAfterScopeSpec(CXXScopeSpec &SS,
       // to produce a type annotation token. Update the template-id
       // annotation token to a type annotation token now.
       AnnotateTemplateIdTokenAsType();
+      return false;
+    } else if (TemplateId->Kind == TNK_Concept_template) {
+      // Leave the template-id annotation as-is for type-constraints etc.
       return false;
     }
   }

@@ -2933,6 +2933,7 @@ Parser::DiagnoseMissingSemiAfterTagDefinition(DeclSpec &DS, AccessSpecifier AS,
       case Sema::NC_Expression:
       case Sema::NC_VarTemplate:
       case Sema::NC_FunctionTemplate:
+      case Sema::NC_Concept:
       case Sema::NC_UndeclaredTemplate:
         // Might be a redeclaration of a prior entity.
         break;
@@ -3162,6 +3163,17 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
         assert(Tok.is(tok::annot_template_id) &&
                "ParseOptionalCXXScopeSpecifier not working");
         AnnotateTemplateIdTokenAsType();
+        continue;
+      }
+
+      if (Next.is(tok::annot_template_id) &&
+          static_cast<TemplateIdAnnotation *>(Next.getAnnotationValue())
+            ->Kind == TNK_Concept_template &&
+          GetLookAheadToken(2).isOneOf(tok::kw_auto, tok::kw_decltype)) {
+        // This is a qualified placeholder-specifier, e.g., ::C<int> auto ...
+        // Consume the scope annotation and continue to consume the template-id
+        // as a placeholder-specifier.
+        ConsumeAnnotationToken();
         continue;
       }
 
