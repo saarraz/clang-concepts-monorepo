@@ -8746,6 +8746,9 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
           NewFD->setTypeSourceInfo(TInfo);
 
           if (Expr *TRC = NewFD->getTrailingRequiresClause()) {
+            CXXMethodDecl *MD = dyn_cast_or_null<CXXMethodDecl>(NewFD);
+            CXXThisScopeRAII ThisScope(*this, MD ? MD->getParent() : nullptr,
+                MD ? MD->getMethodQualifiers() : Qualifiers(), MD != nullptr);
             ExprResult TransRequiresClause = Replacer.TransformExpr(TRC);
             if (TransRequiresClause.isUsable() &&
                 !TransRequiresClause.isInvalid())
