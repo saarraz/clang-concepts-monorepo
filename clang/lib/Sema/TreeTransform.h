@@ -5246,7 +5246,7 @@ bool TreeTransform<Derived>::TransformFunctionTypeParams(
 #ifndef NDEBUG
           const AutoType *AT =
               Pattern.getType().getTypePtr()->getContainedAutoType();
-          assert((AT && !AT->isDeduced()) &&
+          assert((AT && (!AT->isDeduced() || AT->getDeducedType().isNull())) &&
                  "Could not find parameter packs or undeduced auto type!");
 #endif
         }
