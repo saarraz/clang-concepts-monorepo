@@ -1163,7 +1163,9 @@ NormalizedConstraint::fromConstraintExprs(Sema &S,
           FD->getDescribedFunctionTemplate() ?
           FD->getDescribedFunctionTemplate()
               ->getInstantiatedFromMemberTemplate()->getTemplatedDecl() :
-          FD->getInstantiatedFromMemberFunction();
+          FD->getInstantiatedFromMemberFunction() ?
+          FD->getInstantiatedFromMemberFunction() :
+          FD->getPrimaryTemplate()->getTemplatedDecl();
       for (unsigned I = 0; I < FD->param_size(); ++I)
         InstScope.InstantiatedLocal(Pattern->getParamDecl(I),
                                     FD->getParamDecl(I));
