@@ -8552,7 +8552,9 @@ namespace {
       // parameter.
       ParmVarDecl *OldParm =
           cast<ParmVarDecl>(Params[TransformedParamIndex++].Param);
-      assert(OldParm->getType() == DI->getType());
+      assert(OldParm->getType() == DI->getType() ||
+             OldParm->getType()->getAs<PackExpansionType>()->getPattern() ==
+             DI->getType());
 
       std::string InventedName;
       llvm::raw_string_ostream OS(InventedName);
@@ -8579,7 +8581,7 @@ namespace {
 
       // This will also find the TypeLoc of the AutoType and place it in AutoTL.
       CurrentParam = CorrespondingTemplateParam;
-      TypeSourceInfo *NewParmType = TransformType(OldParm->getTypeSourceInfo());
+      TypeSourceInfo *NewParmType = TransformType(DI);
       CurrentParam = nullptr;
 
       if (AT->isConstrained()) {
@@ -8703,8 +8705,12 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     SetNestedNameSpecifier(*this, NewFD, D);
     isMemberSpecialization = false;
     isFunctionTemplateSpecialization = false;
-    if (D.isInvalidType())
+    if (D.isInvalidType()) {
       NewFD->setInvalidDecl();
+      // We don't want to deal with partial parameter infos down the line.
+      // FIXME: Recover better
+      IsAbbreviatedTemplate = false;
+    }
 
     // Match up the template parameter lists with the scope specifier, then
     // determine whether we have a template or a template specialization.
