@@ -1,6 +1,6 @@
 // RUN: %clang_cc1 -std=c++1z -verify %s
 
-template<typename T> struct A { constexpr A(int = 0) {} };
+template<typename T> struct A { constexpr A(int = 0) {} void foo() { }};
 A() -> A<int>;
 A(int) -> A<char>;
 
@@ -10,6 +10,10 @@ A c [[]] {};
 
 A d = {}, e = {};
 A f(0), g{}; // expected-error {{template arguments deduced as 'A<char>' in declaration of 'f' and deduced as 'A<int>' in declaration of 'g'}}
+template<typename T>
+void bar(T t) {
+  A(t).foo();
+}
 
 struct B {
   static A a; // expected-error {{requires an initializer}}

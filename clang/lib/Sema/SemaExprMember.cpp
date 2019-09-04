@@ -505,6 +505,7 @@ Sema::ActOnDependentMemberExpr(Expr *BaseExpr, QualType BaseType,
   }
 
   assert(BaseType->isDependentType() ||
+         (BaseExpr && BaseExpr->isTypeDependent()) ||
          NameInfo.getName().isDependentName() ||
          isDependentScopeSpecifier(SS));
 
@@ -750,7 +751,7 @@ Sema::BuildMemberReferenceExpr(Expr *Base, QualType BaseType,
                                const TemplateArgumentListInfo *TemplateArgs,
                                const Scope *S,
                                ActOnMemberAccessExtraArgs *ExtraArgs) {
-  if (BaseType->isDependentType() ||
+  if (BaseType->isDecltypeType() || (Base && Base->isTypeDependent()) ||
       (SS.isSet() && isDependentScopeSpecifier(SS)))
     return ActOnDependentMemberExpr(Base, BaseType,
                                     IsArrow, OpLoc,
