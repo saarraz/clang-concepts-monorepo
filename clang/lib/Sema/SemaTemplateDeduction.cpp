@@ -4552,7 +4552,7 @@ Sema::DeduceAutoType(TypeLoc Type, Expr *&Init, QualType &Result,
       if (AT->isConstrained() && !IgnoreConstraints) {
         auto ConstraintsResult =
             CheckDeducedPlaceholderConstraints(*this, *AT,
-                                               Type.getAs<AutoTypeLoc>(),
+                                               Type.findAutoTypeLoc(),
                                                Deduced);
         if (ConstraintsResult != DAR_Succeeded)
           return ConstraintsResult;
@@ -4662,7 +4662,7 @@ Sema::DeduceAutoType(TypeLoc Type, Expr *&Init, QualType &Result,
     if (AT->isConstrained() && !IgnoreConstraints) {
       auto ConstraintsResult =
           CheckDeducedPlaceholderConstraints(*this, *AT,
-                                             Type.getAs<AutoTypeLoc>(),
+                                             Type.findAutoTypeLoc(),
                                              DeducedType);
       if (ConstraintsResult != DAR_Succeeded)
         return ConstraintsResult;

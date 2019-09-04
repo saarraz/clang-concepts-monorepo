@@ -604,6 +604,10 @@ namespace {
       return Visit(T.getNamedTypeLoc());
     }
 
+    TypeLoc VisitQualifiedTypeLoc(QualifiedTypeLoc T) {
+      return Visit(T.getUnqualifiedLoc());
+    }
+
     TypeLoc VisitPointerTypeLoc(PointerTypeLoc T) {
       return Visit(T.getPointeeLoc());
     }
