@@ -4286,14 +4286,14 @@ Sema::CheckConceptTemplateId(const CXXScopeSpec &SS,
     return ExprError();
 
   bool IsSatisfied = true;
-  bool IsInstantiationDependent = false;
+  bool AreArgsDependent = false;
   for (TemplateArgument &Arg : Converted) {
-    if (Arg.isInstantiationDependent()) {
-      IsInstantiationDependent = true;
+    if (Arg.isDependent()) {
+      AreArgsDependent = true;
       break;
     }
   }
-  if (!IsInstantiationDependent) {
+  if (!AreArgsDependent) {
     InstantiatingTemplate Inst(*this, ConceptNameLoc,
         InstantiatingTemplate::ConstraintsCheck{}, NamedConcept, Converted,
         SourceRange(SS.isSet() ? SS.getBeginLoc() : ConceptNameLoc,
@@ -4309,7 +4309,7 @@ Sema::CheckConceptTemplateId(const CXXScopeSpec &SS,
       SS.isSet() ? SS.getWithLocInContext(Context) : NestedNameSpecifierLoc{},
       TemplateKWLoc, ConceptNameLoc, FoundDecl, NamedConcept,
       ASTTemplateArgumentListInfo::Create(Context, *TemplateArgs), Converted,
-      IsSatisfied);
+      IsSatisfied, AreArgsDependent);
 }
 
 ExprResult Sema::BuildTemplateIdExpr(const CXXScopeSpec &SS,

@@ -23,17 +23,21 @@ bool Sema::CheckConstraintExpression(Expr *ConstraintExpression) {
   // C++2a [temp.constr.atomic]p1
   // ..E shall be a constant expression of type bool.
 
-  if (auto *BinOp = dyn_cast<BinaryOperator>(ConstraintExpression))
+  ConstraintExpression = ConstraintExpression->IgnoreParenImpCasts();
+
+  if (auto *BinOp = dyn_cast<BinaryOperator>(ConstraintExpression)) {
     if (BinOp->getOpcode() == BO_LAnd || BinOp->getOpcode() == BO_LOr)
       return CheckConstraintExpression(BinOp->getLHS()) &&
-          CheckConstraintExpression(BinOp->getRHS());
+             CheckConstraintExpression(BinOp->getRHS());
+  } else if (auto *C = dyn_cast<ExprWithCleanups>(ConstraintExpression))
+    return CheckConstraintExpression(C->getSubExpr());
 
   // An atomic constraint!
   if (ConstraintExpression->isTypeDependent())
     return true;
 
-  QualType Type = ConstraintExpression->IgnoreParenImpCasts()->getType()
-                      .getNonReferenceType().getUnqualifiedType();
+  QualType Type = ConstraintExpression->getType().getNonReferenceType()
+                      .getUnqualifiedType();
   if (!Context.hasSameType(Type, Context.BoolTy)) {
     Diag(ConstraintExpression->getExprLoc(),
          diag::err_non_bool_atomic_constraint) << Type
@@ -48,6 +52,8 @@ Sema::CalculateConstraintSatisfaction(ConceptDecl *NamedConcept,
                                       MultiLevelTemplateArgumentList &MLTAL,
                                       Expr *ConstraintExpr,
                                       bool &IsSatisfied) {
+  ConstraintExpr = ConstraintExpr->IgnoreParenImpCasts();
+
   if (auto *BO = dyn_cast<BinaryOperator>(ConstraintExpr)) {
     if (BO->getOpcode() == BO_LAnd) {
       if (CalculateConstraintSatisfaction(NamedConcept, MLTAL, BO->getLHS(),
@@ -66,9 +72,7 @@ Sema::CalculateConstraintSatisfaction(ConceptDecl *NamedConcept,
       return CalculateConstraintSatisfaction(NamedConcept, MLTAL, BO->getRHS(),
                                              IsSatisfied);
     }
-  } else if (auto *PO = dyn_cast<ParenExpr>(ConstraintExpr))
-    return CalculateConstraintSatisfaction(NamedConcept, MLTAL,
-                                           PO->getSubExpr(), IsSatisfied);
+  }
   else if (auto *C = dyn_cast<ExprWithCleanups>(ConstraintExpr))
     return CalculateConstraintSatisfaction(NamedConcept, MLTAL, C->getSubExpr(),
                                            IsSatisfied);

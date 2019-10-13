@@ -5991,9 +5991,9 @@ public:
   bool CheckConstraintExpression(Expr *CE);
 
   bool CalculateConstraintSatisfaction(ConceptDecl *NamedConcept,
-                                         MultiLevelTemplateArgumentList &MLTAL,
-                                         Expr *ConstraintExpr,
-                                         bool &IsSatisfied);
+                                       MultiLevelTemplateArgumentList &MLTAL,
+                                       Expr *ConstraintExpr,
+                                       bool &IsSatisfied);
 
     // ParseObjCStringLiteral - Parse Objective-C string literals.
   ExprResult ParseObjCStringLiteral(SourceLocation *AtLocs,
@@ -7588,7 +7588,9 @@ public:
       DefiningSynthesizedFunction,
 
       // We are checking the constraints associated with a constrained entity or
-      // the constraint expression of a concept.
+      // the constraint expression of a concept. This includes the checks that
+      // atomic constraints have the type 'bool' and that they can be constant
+      // evaluated.
       ConstraintsCheck,
 
       // We are substituting template arguments into a constraint expression.

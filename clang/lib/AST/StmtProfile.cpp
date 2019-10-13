@@ -1305,7 +1305,7 @@ void StmtProfiler::VisitAtomicExpr(const AtomicExpr *S) {
 void StmtProfiler::VisitConceptSpecializationExpr(
                                            const ConceptSpecializationExpr *S) {
   VisitExpr(S);
-  VisitDecl(S->getNamedConcept());
+  VisitDecl(S->getFoundDecl());
   VisitTemplateArguments(S->getTemplateArgsAsWritten()->getTemplateArgs(),
                          S->getTemplateArgsAsWritten()->NumTemplateArgs);
 }

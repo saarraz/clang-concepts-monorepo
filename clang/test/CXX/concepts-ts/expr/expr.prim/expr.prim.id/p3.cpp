@@ -1,4 +1,4 @@
-// RUN:  %clang_cc1 -std=c++2a -fconcepts-ts -verify %s
+// RUN:  %clang_cc1 -std=c++2a -fconcepts-ts -verify -triple x86_64-linux-gnu %s
 
 template<typename T> concept C1 = true; // expected-note{{template is declared here}}
 static_assert(C1<int>);

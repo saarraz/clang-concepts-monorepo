@@ -4799,7 +4799,7 @@ class ConceptSpecializationExpr final : public Expr,
                             ConceptDecl *NamedConcept,
                             const ASTTemplateArgumentListInfo *ArgsAsWritten,
                             ArrayRef<TemplateArgument> ConvertedArgs,
-                            bool IsSatisfied);
+                            bool IsSatisfied, bool IsValueDependent);
 
   ConceptSpecializationExpr(EmptyShell Empty, unsigned NumTemplateArgs);
 
@@ -4810,7 +4810,8 @@ public:
          SourceLocation TemplateKWLoc, SourceLocation ConceptNameLoc,
          NamedDecl *FoundDecl, ConceptDecl *NamedConcept,
          const ASTTemplateArgumentListInfo *ArgsAsWritten,
-         ArrayRef<TemplateArgument> ConvertedArgs, bool IsSatisfied);
+         ArrayRef<TemplateArgument> ConvertedArgs, bool IsSatisfied,
+         bool IsValueDependent);
 
   static ConceptSpecializationExpr *
   Create(ASTContext &C, EmptyShell Empty, unsigned NumTemplateArgs);

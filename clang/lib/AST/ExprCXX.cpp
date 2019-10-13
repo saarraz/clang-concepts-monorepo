@@ -1688,11 +1688,13 @@ ConceptSpecializationExpr::ConceptSpecializationExpr(ASTContext &C,
     NestedNameSpecifierLoc NNS, SourceLocation TemplateKWLoc,
     SourceLocation ConceptNameLoc, NamedDecl *FoundDecl,
     ConceptDecl *NamedConcept, const ASTTemplateArgumentListInfo *ArgsAsWritten,
-    ArrayRef<TemplateArgument> ConvertedArgs, bool IsSatisfied)
+    ArrayRef<TemplateArgument> ConvertedArgs, bool IsSatisfied,
+    bool IsValueDependent)
     : Expr(ConceptSpecializationExprClass, C.BoolTy, VK_RValue, OK_Ordinary,
            /*TypeDependent=*/false,
            // All the flags below are set in setTemplateArguments.
-           /*ValueDependent=*/false, /*InstantiationDependent=*/false,
+           /*ValueDependent=*/IsValueDependent,
+           /*InstantiationDependent=*/false,
            /*ContainsUnexpandedParameterPacks=*/false),
       NestedNameSpec(NNS), TemplateKWLoc(TemplateKWLoc),
       ConceptNameLoc(ConceptNameLoc), FoundDecl(FoundDecl),
@@ -1714,27 +1716,21 @@ void ConceptSpecializationExpr::setTemplateArguments(
   this->ArgsAsWritten = ArgsAsWritten;
   std::uninitialized_copy(Converted.begin(), Converted.end(),
                           getTrailingObjects<TemplateArgument>());
-  bool IsDependent = false;
   bool IsInstantiationDependent = false;
   bool ContainsUnexpandedParameterPack = false;
   for (const TemplateArgumentLoc& LocInfo : ArgsAsWritten->arguments()) {
-    if (LocInfo.getArgument().isDependent()) {
-      IsDependent = true;
-      if (ContainsUnexpandedParameterPack && IsInstantiationDependent)
-        break;
-    }
-    if (LocInfo.getArgument().isInstantiationDependent()) {
+    if (LocInfo.getArgument().isInstantiationDependent())
       IsInstantiationDependent = true;
-      if (ContainsUnexpandedParameterPack && IsDependent)
-        break;
-    }
-    if (LocInfo.getArgument().containsUnexpandedParameterPack()) {
+    if (LocInfo.getArgument().containsUnexpandedParameterPack())
       ContainsUnexpandedParameterPack = true;
-      if (IsDependent && IsInstantiationDependent)
-        break;
-    }
+    if (ContainsUnexpandedParameterPack && IsInstantiationDependent)
+      break;
   }
-  setValueDependent(IsDependent);
+
+  // Currently guaranteed by the fact concepts can only be at namespace-scope.
+  assert(!NestedNameSpec.getNestedNameSpecifier()->isInstantiationDependent() &&
+         !NestedNameSpec.getNestedNameSpecifier()
+             ->containsUnexpandedParameterPacks());
   setInstantiationDependent(IsInstantiationDependent);
   setContainsUnexpandedParameterPack(ContainsUnexpandedParameterPack);
 }
@@ -1747,13 +1743,14 @@ ConceptSpecializationExpr::Create(ASTContext &C, NestedNameSpecifierLoc NNS,
                                   ConceptDecl *NamedConcept,
                                const ASTTemplateArgumentListInfo *ArgsAsWritten,
                                   ArrayRef<TemplateArgument> ConvertedArgs,
-                                  bool IsSatisfied) {
+                                  bool IsSatisfied, bool IsValueDependent) {
   void *Buffer = C.Allocate(totalSizeToAlloc<TemplateArgument>(
                                 ConvertedArgs.size()));
   return new (Buffer) ConceptSpecializationExpr(C, NNS, TemplateKWLoc,
                                                 ConceptNameLoc, FoundDecl,
                                                 NamedConcept, ArgsAsWritten,
-                                                ConvertedArgs, IsSatisfied);
+                                                ConvertedArgs, IsSatisfied,
+                                                IsValueDependent);
 }
 
 ConceptSpecializationExpr *
