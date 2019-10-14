@@ -2394,14 +2394,16 @@ bool Sema::CheckTemplateParameterList(TemplateParameterList *NewParams,
   // We were missing some default arguments at the end of the list, so remove
   // all of the default arguments.
   if (RemoveDefaultArguments) {
-    for (NamedDecl *NewParam : *NewParams) {
-      if (TemplateTypeParmDecl *TTP = dyn_cast<TemplateTypeParmDecl>(NewParam))
+    for (TemplateParameterList::iterator NewParam = NewParams->begin(),
+                                      NewParamEnd = NewParams->end();
+         NewParam != NewParamEnd; ++NewParam) {
+      if (TemplateTypeParmDecl *TTP = dyn_cast<TemplateTypeParmDecl>(*NewParam))
         TTP->removeDefaultArgument();
       else if (NonTypeTemplateParmDecl *NTTP
-                                = dyn_cast<NonTypeTemplateParmDecl>(NewParam))
+                                = dyn_cast<NonTypeTemplateParmDecl>(*NewParam))
         NTTP->removeDefaultArgument();
       else
-        cast<TemplateTemplateParmDecl>(NewParam)->removeDefaultArgument();
+        cast<TemplateTemplateParmDecl>(*NewParam)->removeDefaultArgument();
     }
   }
 
