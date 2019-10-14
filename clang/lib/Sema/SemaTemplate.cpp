@@ -4447,7 +4447,7 @@ Sema::CheckConceptTemplateId(const CXXScopeSpec &SS,
   }
   if (!IsInstantiationDependent) {
     TemplateArgumentList TempList(TemplateArgumentList::OnStack, Converted);
-    if (CheckConstraintSatisfaction(NamedConcept,
+    if (CheckConstraintSatisfaction(NamedConcept, NamedConcept,
                                     {NamedConcept->getConstraintExpr()},
                                     MultiLevelTemplateArgumentList(TempList),
                                     SourceRange(SS.isSet() ? SS.getBeginLoc() :

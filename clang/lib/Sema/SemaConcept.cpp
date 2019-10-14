@@ -241,29 +241,49 @@ CheckConstraintSatisfaction(Sema &S, ArrayRef<const Expr *> ConstraintExprs,
   return false;
 }
 
-bool Sema::CheckConstraintSatisfaction(NamedDecl *Template,
-    ArrayRef<const Expr *> ConstraintExprs,
+bool Sema::CheckConstraintSatisfaction(NamedDecl *ConstraintOwner,
+    NamedDecl *Template, ArrayRef<const Expr *> ConstraintExprs,
     const MultiLevelTemplateArgumentList &TemplateArgs,
     SourceRange TemplateIDRange, ConstraintSatisfaction &Satisfaction) {
   if (ConstraintExprs.empty()) {
     Satisfaction.IsSatisfied = true;
     return false;
   }
-  InstantiatingTemplate Inst(*this, TemplateIDRange.getBegin(),
-      InstantiatingTemplate::ConstraintsCheck{}, Template,
-      TemplateArgs.getInnermost(), TemplateIDRange);
-  if (Inst.isInvalid())
-    return true;
 
-  return ::CheckConstraintSatisfaction(*this, ConstraintExprs,
-      TemplateArgs, TemplateIDRange,
-      [&] (SourceLocation PointOfInstantiation,
-           SourceRange InstantiationRange,
-           TemplateDeductionInfo &DeductionInfo) {
-          return std::move(InstantiatingTemplate(*this, PointOfInstantiation,
-              InstantiatingTemplate::ConstraintSubstitution{}, Template,
-              DeductionInfo, InstantiationRange));
-      }, Satisfaction);
+  llvm::FoldingSetNodeID ID;
+  void *InsertPos;
+  ConstraintSatisfaction::Profile(ID, Context, ConstraintOwner,
+                                  TemplateArgs.getInnermost());
+  ConstraintSatisfaction *Cached =
+      SatisfactionCache.FindNodeOrInsertPos(ID, InsertPos);
+  if (!Cached) {
+    InstantiatingTemplate Inst(*this, TemplateIDRange.getBegin(),
+        InstantiatingTemplate::ConstraintsCheck{}, Template,
+        TemplateArgs.getInnermost(), TemplateIDRange);
+    if (Inst.isInvalid())
+      return true;
+
+    Cached = new ConstraintSatisfaction(ConstraintOwner,
+                                        TemplateArgs.getInnermost());
+
+    if (::CheckConstraintSatisfaction(*this, ConstraintExprs,
+        TemplateArgs, TemplateIDRange,
+        [&] (SourceLocation PointOfInstantiation,
+             SourceRange InstantiationRange,
+             TemplateDeductionInfo &DeductionInfo) {
+            return std::move(InstantiatingTemplate(*this, PointOfInstantiation,
+                InstantiatingTemplate::ConstraintSubstitution{}, Template,
+                DeductionInfo, InstantiationRange));
+        }, *Cached)) {
+      delete Cached;
+      return true;
+    }
+
+    SatisfactionCache.InsertNode(Cached, InsertPos);
+  }
+
+  Satisfaction = *Cached;
+  return false;
 }
 
 bool Sema::CheckConstraintSatisfaction(NestedRequirement *Req,
@@ -308,7 +328,7 @@ bool Sema::EnsureTemplateArgumentListConstraints(
   TemplateArgumentList TAL(TemplateArgumentList::OnStack, TemplateArgs);
   MultiLevelTemplateArgumentList MLTAL =
       getTemplateInstantiationArgs(TD, /*Innermost=*/&TAL);
-  if (CheckConstraintSatisfaction(TD, AssociatedConstraints,
+  if (CheckConstraintSatisfaction(TD, TD, AssociatedConstraints,
                                   MLTAL, TemplateIDRange, Satisfaction))
     return true;
 
@@ -990,6 +1010,16 @@ NestedRequirement::NestedRequirement(Sema &S, Expr *Constraint,
 void NestedRequirement::Diagnose(Sema &S, bool First) const {
   S.DiagnoseUnsatisfiedConstraint(*Satisfaction, First);
 }
+
+void
+ConstraintSatisfaction::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &C,
+                                NamedDecl *ConstraintOwner,
+                                ArrayRef<TemplateArgument> TemplateArgs) {
+  ID.AddPointer(ConstraintOwner->getCanonicalDecl());
+  for (const TemplateArgument &Arg : TemplateArgs)
+    Arg.Profile(ID, C);
+}
+
 
 llvm::Optional<NormalizedConstraint>
 Sema::getNormalizedAssociatedConstraints(NamedDecl *TemplateLike) {

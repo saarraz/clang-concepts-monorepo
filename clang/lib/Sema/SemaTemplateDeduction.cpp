@@ -2727,7 +2727,7 @@ CheckDeducedArgumentConstraints(Sema& S, TemplateDeclT *Template,
     MLTAL = S.getTemplateInstantiationArgs(ND, /*Innermost=*/&TAL);
   else
     MLTAL.addOuterTemplateArguments(&TAL);
-  if (S.CheckConstraintSatisfaction(Template, AssociatedConstraints,
+  if (S.CheckConstraintSatisfaction(Template, Template, AssociatedConstraints,
                                     MLTAL, Info.getLocation(),
                                     Info.AssociatedConstraintsSatisfaction)
       || !Info.AssociatedConstraintsSatisfaction.IsSatisfied) {
@@ -4465,7 +4465,8 @@ CheckDeducedPlaceholderConstraints(Sema &S, const AutoType &Type,
     return Sema::DAR_FailedAlreadyDiagnosed;
   MultiLevelTemplateArgumentList MLTAL;
   MLTAL.addOuterTemplateArguments(Converted);
-  if (S.CheckConstraintSatisfaction(Concept, {Concept->getConstraintExpr()},
+  if (S.CheckConstraintSatisfaction(Concept, Concept,
+                                    {Concept->getConstraintExpr()},
                                     MLTAL, TypeLoc.getLocalSourceRange(),
                                     Satisfaction))
     return Sema::DAR_FailedAlreadyDiagnosed;

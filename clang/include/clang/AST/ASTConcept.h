@@ -22,25 +22,7 @@
 #include <utility>
 namespace clang {
 class ConceptDecl;
-
-/// \brief The result of a constraint satisfaction check, containing the
-/// necessary information to diagnose an unsatisfied constraint.
-struct ConstraintSatisfaction {
-  using SubstitutionDiagnostic = std::pair<SourceLocation, std::string>;
-  using Detail = llvm::PointerUnion<Expr *, SubstitutionDiagnostic *>;
-
-  bool IsSatisfied = false;
-
-  /// \brief Pairs of unsatisfied atomic constraint expressions along with the
-  /// substituted constraint expr, if the template arguments could be
-  /// substituted into them, or a diagnostic if substitution resulted in an
-  /// invalid expression.
-  llvm::SmallVector<std::pair<const Expr *, Detail>, 4> Details;
-
-  // This can leak if used in an AST node, use ASTConstraintSatisfaction
-  // instead.
-  void *operator new(size_t bytes, ASTContext &C) = delete;
-};
+class ConstraintSatisfaction;
 
 /// Pairs of unsatisfied atomic constraint expressions along with the
 /// substituted constraint expr, if the template arguments could be

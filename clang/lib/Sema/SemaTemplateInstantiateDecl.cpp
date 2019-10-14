@@ -4095,14 +4095,14 @@ bool Sema::CheckFunctionConstraints(FunctionDecl *Decl,
   // Note - code synthesis context for the constraints check is created
   // inside CheckConstraintsSatisfaction.
   if (auto *TD = dyn_cast<TemplateDecl>(Template))
-    return CheckConstraintSatisfaction(TD, AssociatedConstraints, MLTAL,
+    return CheckConstraintSatisfaction(Decl, TD, AssociatedConstraints, MLTAL,
                                        Decl->getPointOfInstantiation(),
                                        Satisfaction);
   if (auto *Var = dyn_cast<VarTemplatePartialSpecializationDecl>(Template))
-    return CheckConstraintSatisfaction(Var, AssociatedConstraints, MLTAL,
+    return CheckConstraintSatisfaction(Decl, Var, AssociatedConstraints, MLTAL,
                                        Decl->getPointOfInstantiation(),
                                        Satisfaction);
-  return CheckConstraintSatisfaction(
+  return CheckConstraintSatisfaction(Decl,
       cast<ClassTemplatePartialSpecializationDecl>(Template),
       AssociatedConstraints, MLTAL, Decl->getPointOfInstantiation(),
       Satisfaction);

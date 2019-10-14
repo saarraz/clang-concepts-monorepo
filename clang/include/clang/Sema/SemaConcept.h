@@ -28,6 +28,43 @@ class ConceptSpecializationExpr;
 class MultiLevelTemplateArgumentList;
 class Sema;
 
+/// \brief The result of a constraint satisfaction check, containing the
+/// necessary information to diagnose an unsatisfied constraint.
+class ConstraintSatisfaction : public llvm::FoldingSetNode {
+  // The template-like entity that 'owns' the constraint checked here (can be a
+  // constrained entity or a concept).
+  NamedDecl *ConstraintOwner = nullptr;
+  llvm::SmallVector<TemplateArgument, 4> TemplateArgs;
+
+public:
+
+  ConstraintSatisfaction() = default;
+
+  ConstraintSatisfaction(NamedDecl *ConstraintOwner,
+                         ArrayRef<TemplateArgument> TemplateArgs) :
+      ConstraintOwner(ConstraintOwner), TemplateArgs(TemplateArgs.begin(),
+                                                     TemplateArgs.end()) { }
+
+  using SubstitutionDiagnostic = std::pair<SourceLocation, std::string>;
+  using Detail = llvm::PointerUnion<Expr *, SubstitutionDiagnostic *>;
+
+  bool IsSatisfied = false;
+
+  /// \brief Pairs of unsatisfied atomic constraint expressions along with the
+  /// substituted constraint expr, if the template arguments could be
+  /// substituted into them, or a diagnostic if substitution resulted in an
+  /// invalid expression.
+  llvm::SmallVector<std::pair<const Expr *, Detail>, 4> Details;
+
+  void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &C) {
+    Profile(ID, C, ConstraintOwner, TemplateArgs);
+  }
+
+  static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &C,
+                      NamedDecl *ConstraintOwner,
+                      ArrayRef<TemplateArgument> TemplateArgs);
+};
+
 struct AtomicConstraint {
   const Expr *ConstraintExpr;
   llvm::SmallVector<TemplateArgument, 3> ParameterMapping;

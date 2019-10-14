@@ -64,3 +64,26 @@ namespace operators
     auto y = &A<char>::operator-;
   }
 }
+
+// We check the constraint satisfaction caching behavior.
+template<typename T>
+concept C = requires (T t) { foo(t); };
+
+template<typename T>
+  requires requires (T t) { foo(t); }
+// expected-note@-1 2{{because 'foo(t)' would be invalid: use of undeclared identifier 'foo'}}
+constexpr bool foo() requires requires (T t) { foo(t); } { return true; }
+// expected-note@-1 2{{candidate template ignored: constraints not satisfied [with T = a::A]}}
+
+namespace a {
+  struct A {};
+}
+
+static_assert(!C<a::A>);
+static_assert(foo<a::A>()); // expected-error{{no matching function for call to 'foo'}}
+
+namespace a {
+  void foo(A a);
+}
+static_assert(!C<a::A>);
+static_assert(foo<a::A>()); // expected-error{{no matching function for call to 'foo'}}

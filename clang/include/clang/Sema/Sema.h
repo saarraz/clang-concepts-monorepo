@@ -5964,6 +5964,9 @@ private:
   /// did in fact subsume the second's.
   llvm::DenseMap<std::pair<NamedDecl *, NamedDecl *>, bool> SubsumptionCache;
 
+  llvm::ContextualFoldingSet<ConstraintSatisfaction, const ASTContext &>
+      SatisfactionCache;
+
 public:
   /// \brief Returns whether the given declaration's associated constraints are
   /// more constrained than another declaration's according to the partial
@@ -5995,6 +5998,8 @@ public:
 
   /// \brief Check whether the given list of constraint expressions are
   /// satisfied (as if in a 'conjunction') given template arguments.
+  /// \param ConstraintOwner the entity that triggered the constraints check
+  /// (either a concept or a constrained entity).
   /// \param ConstraintExprs a list of constraint expressions, treated as if
   /// they were 'AND'ed together.
   /// \param TemplateArgs the list of template arguments to substitute into the
@@ -6006,8 +6011,8 @@ public:
   /// expression.
   /// \returns true if an error occurred and satisfaction could not be checked,
   /// false otherwise.
-  bool CheckConstraintSatisfaction(NamedDecl *Template,
-      ArrayRef<const Expr *> ConstraintExprs,
+  bool CheckConstraintSatisfaction(NamedDecl *ConstraintOwner,
+      NamedDecl *Template, ArrayRef<const Expr *> ConstraintExprs,
       const MultiLevelTemplateArgumentList &TemplateArgs,
       SourceRange TemplateIDRange, ConstraintSatisfaction &Satisfaction);
 
