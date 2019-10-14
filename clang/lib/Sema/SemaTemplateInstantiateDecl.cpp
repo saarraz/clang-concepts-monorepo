@@ -1746,11 +1746,12 @@ Decl *TemplateDeclInstantiator::VisitFunctionDecl(FunctionDecl *D,
       return nullptr;
   }
 
+  // FIXME: Concepts: Do not substitute into constraint expressions
   Expr *TrailingRequiresClause = D->getTrailingRequiresClause();
   if (TrailingRequiresClause) {
     ExprResult SubstRC = SemaRef.SubstExpr(TrailingRequiresClause,
                                            TemplateArgs);
-    if (!SubstRC.isUsable() || SubstRC.isInvalid())
+    if (SubstRC.isInvalid())
       return nullptr;
     TrailingRequiresClause = SubstRC.get();
     if (!SemaRef.CheckConstraintExpression(TrailingRequiresClause))
@@ -2074,11 +2075,12 @@ Decl *TemplateDeclInstantiator::VisitCXXMethodDecl(
       return nullptr;
   }
 
+  // FIXME: Concepts: Do not substitute into constraint expressions
   Expr *TrailingRequiresClause = D->getTrailingRequiresClause();
   if (TrailingRequiresClause) {
     ExprResult SubstRC = SemaRef.SubstExpr(TrailingRequiresClause,
                                            TemplateArgs);
-    if (!SubstRC.isUsable() || SubstRC.isInvalid())
+    if (SubstRC.isInvalid())
       return nullptr;
     TrailingRequiresClause = SubstRC.get();
     if (!SemaRef.CheckConstraintExpression(TrailingRequiresClause))
