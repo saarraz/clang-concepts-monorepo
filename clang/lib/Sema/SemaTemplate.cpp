@@ -1057,6 +1057,7 @@ bool Sema::ActOnTypeConstraint(TemplateIdAnnotation *TypeConstr,
          diag::err_type_constraint_missing_arguments) << CD <<
          FixItHint::CreateInsertion(ConstrainedParameter->getLocation(),
                                     "<...>");
+    ConstrainedParameter->setInvalidTypeConstraint();
     return true;
   }
 
