@@ -2930,27 +2930,23 @@ namespace {
 static IdentifierInfo *InventIdentifierInfo(Sema &SemaRef, const AutoType *Auto,
                                             const Declarator &D,
                                             const TemplateTypeParmType *TTPT) {
-  if (!TTPT) {
+  if (!TTPT || !Auto->isConstrained() || !D.getIdentifier()) {
     return nullptr;
   }
 
-  if (Auto->isConstrained()) {
-    if (const auto *ID = D.getIdentifier()) {
-      std::string InventedName;
-      llvm::raw_string_ostream OS(InventedName);
-      const auto Name = ID->getName();
-      if (Name.empty()) {
-        const auto Index = TTPT->getIndex();
-        OS << "auto:" << Index + 1;
-      } else {
-        OS << Name << ":auto";
-      }
-      OS.flush();
-      return &SemaRef.Context.Idents.get(OS.str());
-    }
-  }
+  const auto *ID = D.getIdentifier();
 
-  return nullptr;
+  std::string InventedName;
+  llvm::raw_string_ostream OS(InventedName);
+  const auto Name = ID->getName();
+  if (Name.empty()) {
+    const auto Index = TTPT->getIndex();
+    OS << "auto:" << Index + 1;
+  } else {
+    OS << Name << ":auto";
+  }
+  OS.flush();
+  return &SemaRef.Context.Idents.get(OS.str());
 }
 
 static void CopyTypeConstraints(Sema &SemaRef, const AutoType *Auto,
