@@ -2927,42 +2927,24 @@ namespace {
   };
 }
 
-static IdentifierInfo *InventIdentifierInfo(Sema &SemaRef, const AutoType *Auto,
-                                            const Declarator &D,
-                                            const TemplateTypeParmType *TTPT) {
-  if (!TTPT || !Auto->isConstrained() || !D.getIdentifier()) {
-    return nullptr;
-  }
-
-  const auto *ID = D.getIdentifier();
-
-  std::string InventedName;
-  llvm::raw_string_ostream OS(InventedName);
-  const auto Name = ID->getName();
-  if (Name.empty()) {
-    const auto Index = TTPT->getIndex();
-    OS << "auto:" << Index + 1;
-  } else {
-    OS << Name << ":auto";
-  }
-  OS.flush();
-  return &SemaRef.Context.Idents.get(OS.str());
-}
-
 static void CopyTypeConstraints(Sema &SemaRef, const AutoType *Auto,
-                                TemplateTypeParmDecl *TP) {
+                                TemplateTypeParmDecl *TP,
+                                const bool IsParameterPack) {
   TypeSourceInfo *DI =
       SemaRef.getASTContext().getTrivialTypeSourceInfo(QualType(Auto, 0));
   const AutoTypeLoc ATL = DI->getTypeLoc().findAutoTypeLoc();
 
-  TemplateArgumentListInfo TAL;
-  for (int Idx = 0; Idx < ATL.getNumArgs(); ++Idx) {
+  TemplateArgumentListInfo TAL(ATL.getLAngleLoc(), ATL.getRAngleLoc());
+  for (unsigned Idx = 0; Idx < ATL.getNumArgs(); ++Idx) {
     TAL.addArgument(ATL.getArgLoc(Idx));
   }
 
-  SemaRef.AttachTypeConstraint(ATL.getNestedNameSpecifierLoc(),
-                               ATL.getConceptNameInfo(), ATL.getNamedConcept(),
-                               &TAL, TP, SourceLocation());
+  SemaRef.AttachTypeConstraint(
+      ATL.getNestedNameSpecifierLoc(), ATL.getConceptNameInfo(),
+      ATL.getNamedConcept(), ATL.wereArgumentsSpecified() ? &TAL : nullptr, TP,
+      IsParameterPack
+          ? DI->getTypeLoc().getAs<PackExpansionTypeLoc>().getEllipsisLoc()
+          : SourceLocation());
 }
 
 static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
@@ -3061,9 +3043,13 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
         const unsigned AutoParameterPosition = LSI->TemplateParams.size();
         const bool IsParameterPack = D.hasEllipsis();
 
+        IdentifierInfo *II = D.getIdentifier();
+
         // Invent param name for constrained parameters
-        IdentifierInfo *Ident = InventIdentifierInfo(
-            SemaRef, Auto, D, dyn_cast<TemplateTypeParmType>(T));
+        IdentifierInfo *Ident = nullptr;
+        if (II && Auto->isConstrained() && isa<TemplateTypeParmType>(T))
+          Ident = SemaRef.InventIdentifier(
+              II->getName(), cast<TemplateTypeParmType>(T)->getIndex());
 
         // Create the TemplateTypeParmDecl here to retrieve the corresponding
         // template parameter type. Template parameters are temporarily added
@@ -3079,9 +3065,9 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
         LSI->TemplateParams.push_back(CorrespondingTemplateParam);
 
         // Attach type constraints
-        if (Auto->isConstrained()) {
-          CopyTypeConstraints(SemaRef, Auto, CorrespondingTemplateParam);
-        }
+        if (Auto->isConstrained())
+          CopyTypeConstraints(SemaRef, Auto, CorrespondingTemplateParam,
+                              IsParameterPack);
 
         // Replace the 'auto' in the function parameter with this invented
         // template type parameter.

@@ -1384,6 +1384,9 @@ public:
   /// Retrieve the module loader associated with the preprocessor.
   ModuleLoader &getModuleLoader() const;
 
+  /// Invent a new identifier for constrained template parameters.
+  IdentifierInfo *InventIdentifier(StringRef Name, unsigned Index);
+
   void emitAndClearUnusedLocalTypedefWarnings();
 
   enum TUFragmentKind {
