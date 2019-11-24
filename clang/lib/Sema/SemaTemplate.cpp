@@ -1046,6 +1046,7 @@ bool Sema::ActOnTypeConstraint(TemplateIdAnnotation *TypeConstr,
   if (!CD->isTypeConcept()) {
     Diag(TypeConstr->TemplateNameLoc,
          diag::err_type_constraint_non_type_concept);
+    ConstrainedParameter->setInvalidTypeConstraint();
     return true;
   }
 
