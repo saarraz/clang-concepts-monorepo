@@ -2927,9 +2927,9 @@ namespace {
   };
 }
 
-static void CopyTypeConstraints(Sema &SemaRef, const AutoType *Auto,
-                                TemplateTypeParmDecl *TP,
-                                const bool IsParameterPack) {
+static void CopyTypeConstraintFromAutoType(Sema &SemaRef, const AutoType *Auto,
+                                           TemplateTypeParmDecl *TP,
+                                           const bool IsParameterPack) {
   TypeSourceInfo *DI =
       SemaRef.getASTContext().getTrivialTypeSourceInfo(QualType(Auto, 0));
   const AutoTypeLoc ATL = DI->getTypeLoc().findAutoTypeLoc();
@@ -3047,9 +3047,9 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
 
         // Invent param name for constrained parameters
         IdentifierInfo *Ident = nullptr;
-        if (II && Auto->isConstrained() && isa<TemplateTypeParmType>(T))
-          Ident = SemaRef.InventIdentifier(
-              II->getName(), cast<TemplateTypeParmType>(T)->getIndex());
+        if (Auto->isConstrained() && isa<TemplateTypeParmType>(T))
+          Ident = SemaRef.InventAbbreviatedTemplateParameterTypeName(
+              II, cast<TemplateTypeParmType>(T)->getIndex());
 
         // Create the TemplateTypeParmDecl here to retrieve the corresponding
         // template parameter type. Template parameters are temporarily added
@@ -3066,8 +3066,8 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
 
         // Attach type constraints
         if (Auto->isConstrained())
-          CopyTypeConstraints(SemaRef, Auto, CorrespondingTemplateParam,
-                              IsParameterPack);
+          CopyTypeConstraintFromAutoType(
+              SemaRef, Auto, CorrespondingTemplateParam, IsParameterPack);
 
         // Replace the 'auto' in the function parameter with this invented
         // template type parameter.

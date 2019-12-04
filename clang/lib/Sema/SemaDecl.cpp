@@ -8557,7 +8557,8 @@ namespace {
              DI->getType());
 
       IdentifierInfo *Invented =
-          SemaRef.InventIdentifier(OldParm->getName(), Index + 1);
+          SemaRef.InventAbbreviatedTemplateParameterTypeName(
+              OldParm->getIdentifier(), Index);
 
       // Create the TemplateTypeParmDecl here to retrieve the corresponding
       // template parameter type. Template parameters are temporarily added
