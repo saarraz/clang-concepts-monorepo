@@ -263,8 +263,8 @@ bool Sema::CheckConstraintSatisfaction(NamedDecl *ConstraintOwner,
     if (Inst.isInvalid())
       return true;
 
-    Cached = new ConstraintSatisfaction(ConstraintOwner,
-                                        TemplateArgs.getInnermost());
+    Cached = new (Context) ConstraintSatisfaction(ConstraintOwner,
+                                                  TemplateArgs.getInnermost());
 
     if (::CheckConstraintSatisfaction(*this, ConstraintExprs,
         TemplateArgs, TemplateIDRange,
