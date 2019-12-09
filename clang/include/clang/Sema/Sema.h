@@ -1384,6 +1384,11 @@ public:
   /// Retrieve the module loader associated with the preprocessor.
   ModuleLoader &getModuleLoader() const;
 
+  /// Invent a new identifier for parameters of abbreviated templates.
+  IdentifierInfo *
+  InventAbbreviatedTemplateParameterTypeName(IdentifierInfo *ParamName,
+                                             unsigned Index);
+
   void emitAndClearUnusedLocalTypedefWarnings();
 
   enum TUFragmentKind {

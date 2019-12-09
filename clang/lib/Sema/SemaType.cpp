@@ -2927,6 +2927,26 @@ namespace {
   };
 }
 
+static void CopyTypeConstraintFromAutoType(Sema &SemaRef, const AutoType *Auto,
+                                           TemplateTypeParmDecl *TP,
+                                           const bool IsParameterPack) {
+  TypeSourceInfo *DI =
+      SemaRef.getASTContext().getTrivialTypeSourceInfo(QualType(Auto, 0));
+  const AutoTypeLoc ATL = DI->getTypeLoc().findAutoTypeLoc();
+
+  TemplateArgumentListInfo TAL(ATL.getLAngleLoc(), ATL.getRAngleLoc());
+  for (unsigned Idx = 0; Idx < ATL.getNumArgs(); ++Idx) {
+    TAL.addArgument(ATL.getArgLoc(Idx));
+  }
+
+  SemaRef.AttachTypeConstraint(
+      ATL.getNestedNameSpecifierLoc(), ATL.getConceptNameInfo(),
+      ATL.getNamedConcept(), ATL.wereArgumentsSpecified() ? &TAL : nullptr, TP,
+      IsParameterPack
+          ? DI->getTypeLoc().getAs<PackExpansionTypeLoc>().getEllipsisLoc()
+          : SourceLocation());
+}
+
 static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
                                              TypeSourceInfo *&ReturnTypeInfo) {
   Sema &SemaRef = state.getSema();
@@ -3023,6 +3043,14 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
         const unsigned AutoParameterPosition = LSI->TemplateParams.size();
         const bool IsParameterPack = D.hasEllipsis();
 
+        IdentifierInfo *II = D.getIdentifier();
+
+        // Invent param name for constrained parameters
+        IdentifierInfo *Ident = nullptr;
+        if (Auto->isConstrained() && isa<TemplateTypeParmType>(T))
+          Ident = SemaRef.InventAbbreviatedTemplateParameterTypeName(
+              II, cast<TemplateTypeParmType>(T)->getIndex());
+
         // Create the TemplateTypeParmDecl here to retrieve the corresponding
         // template parameter type. Template parameters are temporarily added
         // to the TU until the associated TemplateDecl is created.
@@ -3031,10 +3059,16 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
                 SemaRef.Context, SemaRef.Context.getTranslationUnitDecl(),
                 /*KeyLoc*/ SourceLocation(), /*NameLoc*/ D.getBeginLoc(),
                 TemplateParameterDepth, AutoParameterPosition,
-                /*Identifier*/ nullptr, false, IsParameterPack,
-                /*OwnsTypeConstraint=*/false);
+                /*Identifier*/ Ident, false, IsParameterPack,
+                /*OwnsTypeConstraint=*/Auto->isConstrained());
         CorrespondingTemplateParam->setImplicit();
         LSI->TemplateParams.push_back(CorrespondingTemplateParam);
+
+        // Attach type constraints
+        if (Auto->isConstrained())
+          CopyTypeConstraintFromAutoType(
+              SemaRef, Auto, CorrespondingTemplateParam, IsParameterPack);
+
         // Replace the 'auto' in the function parameter with this invented
         // template type parameter.
         // FIXME: Retain some type sugar to indicate that this was written

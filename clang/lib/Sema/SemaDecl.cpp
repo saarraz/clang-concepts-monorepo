@@ -8556,14 +8556,9 @@ namespace {
              OldParm->getType()->getAs<PackExpansionType>()->getPattern() ==
              DI->getType());
 
-      std::string InventedName;
-      llvm::raw_string_ostream OS(InventedName);
-      auto Name = OldParm->getName();
-      if (Name.empty())
-        OS << "auto:" << Index + 1;
-      else
-        OS << Name << ":auto";
-      OS.flush();
+      IdentifierInfo *Invented =
+          SemaRef.InventAbbreviatedTemplateParameterTypeName(
+              OldParm->getIdentifier(), Index);
 
       // Create the TemplateTypeParmDecl here to retrieve the corresponding
       // template parameter type. Template parameters are temporarily added
@@ -8573,7 +8568,7 @@ namespace {
               SemaRef.Context, SemaRef.Context.getTranslationUnitDecl(),
               /*KeyLoc=*/SourceLocation(), /*NameLoc=*/OldParm->getLocation(),
               Depth, Index++,
-              /*Identifier=*/&SemaRef.Context.Idents.get(OS.str()),
+              /*Identifier=*/Invented,
               /*Typename=*/false, OldParm->isParameterPack(),
               /*OwnsTypeConstraint=*/AT->isConstrained());
       CorrespondingTemplateParam->setImplicit();
