@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -std=c++2a -fconcepts-ts -x c++ -verify %s
-#if 0
+
 template<typename T>
 constexpr bool is_ptr_v = false;
 
@@ -23,7 +23,6 @@ static_assert(is_same_v<decltype(dereference<int*>(nullptr)), int>);
 static_assert(is_same_v<decltype(dereference(2)), int>); // expected-error {{no matching function for call to 'dereference'}}
 static_assert(is_same_v<decltype(dereference<char>('a')), char>); // expected-error {{no matching function for call to 'dereference'}}
 
-#endif
 template<typename T> requires (T{} + T{}) // expected-note {{because substituted constraint expression is ill-formed: invalid operands to binary expression ('A' and 'A')}}
 auto foo(T t) { // expected-note {{candidate template ignored: constraints not satisfied [with T = A]}}
   return t + t;
