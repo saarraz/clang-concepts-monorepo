@@ -369,14 +369,6 @@ Sema::~Sema() {
   if (isMultiplexExternalSource)
     delete ExternalSource;
 
-  // Delete cached satisfactions.
-  std::vector<ConstraintSatisfaction *> Satisfactions;
-  Satisfactions.reserve(Satisfactions.size());
-  for (auto &Node : SatisfactionCache)
-    Satisfactions.push_back(&Node);
-  for (auto *Node : Satisfactions)
-    delete Node;
-
   threadSafety::threadSafetyCleanup(ThreadSafetyDeclCache);
 
   // Destroys data sharing attributes stack for OpenMP
