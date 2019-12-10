@@ -274,10 +274,8 @@ bool Sema::CheckConstraintSatisfaction(NamedDecl *ConstraintOwner,
             return std::move(InstantiatingTemplate(*this, PointOfInstantiation,
                 InstantiatingTemplate::ConstraintSubstitution{}, Template,
                 DeductionInfo, InstantiationRange));
-        }, *Cached)) {
-      delete Cached;
+        }, *Cached))
       return true;
-    }
 
     SatisfactionCache.InsertNode(Cached, InsertPos);
   }
