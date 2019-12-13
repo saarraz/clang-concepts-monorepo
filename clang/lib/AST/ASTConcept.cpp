@@ -14,7 +14,6 @@
 
 #include "clang/AST/ASTConcept.h"
 #include "clang/AST/ASTContext.h"
-#include "clang/Sema/SemaConcept.h"
 using namespace clang;
 
 ASTConstraintSatisfaction::ASTConstraintSatisfaction(const ASTContext &C,
@@ -32,11 +31,10 @@ ASTConstraintSatisfaction::ASTConstraintSatisfaction(const ASTContext &C,
       auto &SubstitutionDiagnostic =
           *Detail.second.get<std::pair<SourceLocation, std::string> *>();
       unsigned MessageSize = SubstitutionDiagnostic.second.size();
-      char *Mem = new (C) char[MessageSize + 1];
+      char *Mem = new (C) char[MessageSize];
       memcpy(Mem, SubstitutionDiagnostic.second.c_str(), MessageSize);
-      Mem[MessageSize + 1] = '\0';
       auto *NewSubstDiag = new (C) std::pair<SourceLocation, StringRef>(
-          SubstitutionDiagnostic.first, StringRef(Mem));
+          SubstitutionDiagnostic.first, StringRef(Mem, MessageSize));
       new (getTrailingObjects<UnsatisfiedConstraintRecord>() + I)
          UnsatisfiedConstraintRecord{Detail.first,
                                      UnsatisfiedConstraintRecord::second_type(
