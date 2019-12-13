@@ -127,35 +127,87 @@ namespace unconstrained {
 
 namespace constrained {
   template<typename T>
-  concept C = true;
-
+  concept C = is_same_v<T, int>;
   template<typename T, typename U>
-  concept C2 = true;
+  concept C2 = is_same_v<T, U>;
 
-  void f(C auto x);
-  void f(C auto &x);
-  void f(const C auto &x);
-  void f(C auto (*x)(C auto y)); // expected-error{{'auto' only allowed in top-level function declaration parameters}}
-  void f(C auto (*x)(int y));
-  void f(C auto (*x)() -> int); // expected-error{{function with trailing return type must specify return type 'auto', not 'C auto'}}
-  void f(C auto... x);
-  void f(C auto &... x);
-  void f(const C auto &... x);
-  void f(C decltype(auto) x);
+  int i;
+  const int ci = 1;
+  char c;
+  const char cc = 'a';
+  int g(int);
+  char h(int);
 
-  void f(C2<int> auto x);
-  void f(C2<int> auto &x);
-  void f(const C2<int> auto &x);
-  void f(C2<int> auto (*x)(C2<int> auto y)); // expected-error{{'auto' only allowed in top-level function declaration parameters}}
-  void f(C2<int> auto (*x)(int y));
-  void f(C2<int> auto (*x)() -> int); // expected-error{{function with trailing return type must specify return type 'auto', not 'C2<int> auto'}}
-  void f(C2<int> auto... x);
-  void f(C2<int> auto &... x);
-  void f(const C2<int> auto &... x);
-  void f(C2<int> decltype(auto) x);
+  void f1(C auto x);
+  static_assert(is_same_v<decltype(f1(1)), void>);
+  static_assert(is_same_v<decltype(f1('a')), void>);
+  void f2(C auto &x);
+  static_assert(is_same_v<decltype(f2(i)), void>);
+  static_assert(is_same_v<decltype(f2(ci)), void>);
+  static_assert(is_same_v<decltype(f2(c)), void>);
+  void f3(const C auto &x);
+  static_assert(is_same_v<decltype(f3(i)), void>);
+  static_assert(is_same_v<decltype(f3(ci)), void>);
+  static_assert(is_same_v<decltype(f3(c)), void>);
+  void f4(C auto (*x)(C auto y)); // expected-error{{'auto' only allowed in top-level function declaration parameters}}
+  void f5(C auto (*x)(int y));
+  static_assert(is_same_v<decltype(f5(g)), void>);
+  static_assert(is_same_v<decltype(f5(h)), void>);
+  void f6(C auto (*x)() -> int); // expected-error{{function with trailing return type must specify return type 'auto', not 'C auto'}}
+  void f7(C auto... x);
+  static_assert(is_same_v<decltype(f7(1, 2)), void>);
+  static_assert(is_same_v<decltype(f7(1, 'a')), void>);
+  static_assert(is_same_v<decltype(f7('a', 2)), void>);
+  void f8(C auto &... x);
+  static_assert(is_same_v<decltype(f8(i, i)), void>);
+  static_assert(is_same_v<decltype(f8(i, c)), void>);
+  static_assert(is_same_v<decltype(f8(i, i, ci)), void>);
+  void f9(const C auto &... x);
+  static_assert(is_same_v<decltype(f9(i, i)), void>);
+  static_assert(is_same_v<decltype(f9(i, c)), void>);
+  static_assert(is_same_v<decltype(f9(i, i, ci)), void>);
+  void f10(C decltype(auto) x); // expected-error{{}}
+  auto f11 = [] (C auto x) { };
+  static_assert(is_same_v<decltype(f11(1)), void>);
+  static_assert(is_same_v<decltype(f11('a')), void>);
 
-  struct S {
-    S(C auto);
-    S(C2<int> auto);
-  };
+  void f12(C2<char> auto x);
+  static_assert(is_same_v<decltype(f12(1)), void>);
+  static_assert(is_same_v<decltype(f12('a')), void>);
+  void f13(C2<char> auto &x);
+  static_assert(is_same_v<decltype(f13(i)), void>);
+  static_assert(is_same_v<decltype(f13(cc)), void>);
+  static_assert(is_same_v<decltype(f13(c)), void>);
+  void f14(const C2<char> auto &x);
+  static_assert(is_same_v<decltype(f14(i)), void>);
+  static_assert(is_same_v<decltype(f14(cc)), void>);
+  static_assert(is_same_v<decltype(f14(c)), void>);
+  void f15(C2<char> auto (*x)(C2<int> auto y)); // expected-error{{'auto' only allowed in top-level function declaration parameters}}
+  void f16(C2<char> auto (*x)(int y));
+  static_assert(is_same_v<decltype(f16(g)), void>);
+  static_assert(is_same_v<decltype(f16(h)), void>);
+  void f17(C2<char> auto (*x)() -> int); // expected-error{{function with trailing return type must specify return type 'auto', not 'C2<int> auto'}}
+  void f18(C2<char> auto... x);
+  static_assert(is_same_v<decltype(f18('a', 'b')), void>);
+  static_assert(is_same_v<decltype(f18('a', 1)), void>);
+  static_assert(is_same_v<decltype(f18(2, 'a')), void>);
+  void f19(C2<char> auto &... x);
+  static_assert(is_same_v<decltype(f19(c, c)), void>);
+  static_assert(is_same_v<decltype(f19(i, c)), void>);
+  static_assert(is_same_v<decltype(f19(c, c, cc)), void>);
+  void f20(const C2<char> auto &... x);
+  static_assert(is_same_v<decltype(f20(c, c)), void>);
+  static_assert(is_same_v<decltype(f20(i, c)), void>);
+  static_assert(is_same_v<decltype(f20(c, c, cc)), void>);
+  void f21(C2<char> decltype(auto) x); // expected-error{{}}
+  auto f22 = [] (C2<char> auto x) { };
+  static_assert(is_same_v<decltype(f22(1)), void>);
+  static_assert(is_same_v<decltype(f22('a')), void>);
+
+  struct S1 { S1(C auto); };
+  static_assert(is_same_v<decltype(S1(1)), void>);
+  static_assert(is_same_v<decltype(S1('a')), void>);
+  struct S2 { S2(C2<char> auto); };
+  static_assert(is_same_v<decltype(S2(1)), void>);
+  static_assert(is_same_v<decltype(S2('a')), void>);
 }

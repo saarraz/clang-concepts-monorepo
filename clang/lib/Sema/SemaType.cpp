@@ -3045,12 +3045,6 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
 
         IdentifierInfo *II = D.getIdentifier();
 
-        // Invent param name for constrained parameters
-        IdentifierInfo *Ident = nullptr;
-        if (Auto->isConstrained() && isa<TemplateTypeParmType>(T))
-          Ident = SemaRef.InventAbbreviatedTemplateParameterTypeName(
-              II, cast<TemplateTypeParmType>(T)->getIndex());
-
         // Create the TemplateTypeParmDecl here to retrieve the corresponding
         // template parameter type. Template parameters are temporarily added
         // to the TU until the associated TemplateDecl is created.
@@ -3059,7 +3053,8 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
                 SemaRef.Context, SemaRef.Context.getTranslationUnitDecl(),
                 /*KeyLoc*/ SourceLocation(), /*NameLoc*/ D.getBeginLoc(),
                 TemplateParameterDepth, AutoParameterPosition,
-                /*Identifier*/ Ident, false, IsParameterPack,
+                SemaRef.InventAbbreviatedTemplateParameterTypeName(II,
+                    AutoParameterPosition), false, IsParameterPack,
                 /*OwnsTypeConstraint=*/Auto->isConstrained());
         CorrespondingTemplateParam->setImplicit();
         LSI->TemplateParams.push_back(CorrespondingTemplateParam);

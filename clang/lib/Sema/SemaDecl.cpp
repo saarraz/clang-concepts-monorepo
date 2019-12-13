@@ -8491,23 +8491,25 @@ namespace {
           TreeTransform::TransformFunctionTypeParam(OldParm, indexAdjustment,
                                                     NumExpansions,
                                                     ExpectParameterPack);
-      // Mark the (new) default argument as uninstantiated (if any).
-      if (OldParm->hasUninstantiatedDefaultArg()) {
-        Expr *Arg = OldParm->getUninstantiatedDefaultArg();
-        ExprResult TransformedArg = TransformExpr(Arg);
-        if (TransformedArg.isInvalid())
-          return nullptr;
-        NewParm->setUninstantiatedDefaultArg(TransformedArg.get());
-      } else if (Expr *Arg = OldParm->getDefaultArg()) {
-        ExprResult TransformedArg = TransformExpr(Arg);
-        if (TransformedArg.isInvalid())
-          return nullptr;
-        NewParm->setDefaultArg(TransformedArg.get());
-      }
+      if (NewParm) {
+          // Mark the (new) default argument as uninstantiated (if any).
+          if (OldParm->hasUninstantiatedDefaultArg()) {
+            Expr *Arg = OldParm->getUninstantiatedDefaultArg();
+            ExprResult TransformedArg = TransformExpr(Arg);
+            if (TransformedArg.isInvalid())
+              return nullptr;
+            NewParm->setUninstantiatedDefaultArg(TransformedArg.get());
+          } else if (Expr *Arg = OldParm->getDefaultArg()) {
+            ExprResult TransformedArg = TransformExpr(Arg);
+            if (TransformedArg.isInvalid())
+              return nullptr;
+            NewParm->setDefaultArg(TransformedArg.get());
+          }
 
-      if (OldParm->hasUnparsedDefaultArg())
-        NewParm->setUnparsedDefaultArg();
-      NewParm->setHasInheritedDefaultArg(OldParm->hasInheritedDefaultArg());
+          if (OldParm->hasUnparsedDefaultArg())
+            NewParm->setUnparsedDefaultArg();
+          NewParm->setHasInheritedDefaultArg(OldParm->hasInheritedDefaultArg());
+      }
       if (TransformingParameters && TopLevelParameter)
         TransformedParams.push_back(NewParm);
       return NewParm;
@@ -8567,9 +8569,8 @@ namespace {
           TemplateTypeParmDecl::Create(
               SemaRef.Context, SemaRef.Context.getTranslationUnitDecl(),
               /*KeyLoc=*/SourceLocation(), /*NameLoc=*/OldParm->getLocation(),
-              Depth, Index++,
-              /*Identifier=*/Invented,
-              /*Typename=*/false, OldParm->isParameterPack(),
+              Depth, Index++, Invented, /*Typename=*/false,
+              OldParm->isParameterPack(),
               /*OwnsTypeConstraint=*/AT->isConstrained());
       CorrespondingTemplateParam->setImplicit();
       InventedTemplateParams.push_back(CorrespondingTemplateParam);
@@ -8592,8 +8593,11 @@ namespace {
               OldParm->isParameterPack() ?
               OldParm->getTypeSourceInfo()->getTypeLoc()
                 .getAs<PackExpansionTypeLoc>().getEllipsisLoc() :
-              SourceLocation()))
+              SourceLocation())) {
+          TopLevelParameter = IsTopLevelParameter;
+          TransformingParameters = true;
           return nullptr;
+        }
       }
 
       TopLevelParameter = IsTopLevelParameter;
