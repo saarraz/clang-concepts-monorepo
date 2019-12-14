@@ -371,6 +371,13 @@ Sema::~Sema() {
   for (sema::FunctionScopeInfo *FSI : FunctionScopes)
     delete FSI;
 
+  // Delete cached satisfactions.
+  while (!SatisfactionCache.empty()) {
+    ConstraintSatisfaction *First = &*SatisfactionCache.begin();
+    SatisfactionCache.RemoveNode(First);
+    delete First;
+  }
+
   // Tell the SemaConsumer to forget about us; we're going out of scope.
   if (SemaConsumer *SC = dyn_cast<SemaConsumer>(&Consumer))
     SC->ForgetSema();
@@ -383,14 +390,6 @@ Sema::~Sema() {
   // If Sema's ExternalSource is the multiplexer - we own it.
   if (isMultiplexExternalSource)
     delete ExternalSource;
-
-  // Delete cached satisfactions.
-  std::vector<ConstraintSatisfaction *> Satisfactions;
-  Satisfactions.reserve(Satisfactions.size());
-  for (auto &Node : SatisfactionCache)
-    Satisfactions.push_back(&Node);
-  for (auto *Node : Satisfactions)
-    delete Node;
 
   threadSafety::threadSafetyCleanup(ThreadSafetyDeclCache);
 

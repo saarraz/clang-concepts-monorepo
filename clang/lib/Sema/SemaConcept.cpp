@@ -164,17 +164,11 @@ static bool calculateConstraintSatisfaction(Sema &S,
               // substitution.
               return ExprError();
 
-            PartialDiagnosticAt SubstDiag{SourceLocation(),
-                                          PartialDiagnostic::NullDiagnostic()};
-            Info.takeSFINAEDiagnostic(SubstDiag);
-            SmallString<128> DiagString;
-            DiagString = ": ";
-            SubstDiag.second.EmitToString(S.getDiagnostics(), DiagString);
-            Satisfaction.Details.emplace_back(
-                AtomicExpr,
-                new (S.Context) ConstraintSatisfaction::SubstitutionDiagnostic{
-                        SubstDiag.first,
-                        std::string(DiagString.begin(), DiagString.end())});
+            auto *SubstDiag =
+                new PartialDiagnosticAt{SourceLocation(),
+                                        PartialDiagnostic::NullDiagnostic()};
+            Info.takeSFINAEDiagnostic(*SubstDiag);
+            Satisfaction.Details.emplace_back(AtomicExpr, SubstDiag);
             Satisfaction.IsSatisfied = false;
             return ExprEmpty();
           }
@@ -279,7 +273,7 @@ bool Sema::CheckConstraintSatisfaction(NamedDecl *ConstraintOwner,
       return true;
     }
 
-    SatisfactionCache.InsertNode(Cached, InsertPos);
+    SatisfactionCache.InsertNode(Cached);
   }
 
   Satisfaction = *Cached;
@@ -1003,7 +997,7 @@ NestedRequirement::NestedRequirement(Sema &S, Expr *Constraint,
     setContainsUnexpandedParameterPack(ContainsUnexpandedParameterPack);
   }
   this->Satisfaction = ASTConstraintSatisfaction::Create(S.Context,
-                                                         Satisfaction);
+      Satisfaction.IsSatisfied, Satisfaction.Details);
   setSatisfied(Satisfaction.IsSatisfied);
 }
 
@@ -1020,6 +1014,20 @@ ConstraintSatisfaction::Profile(llvm::FoldingSetNodeID &ID, const ASTContext &C,
     Arg.Profile(ID, C);
 }
 
+ConstraintSatisfaction::ConstraintSatisfaction(ConstraintSatisfaction &Other):
+  IsSatisfied(Other.IsSatisfied) {
+  for (UnsatisfiedConstraintRecord &Record : Details)
+    if (auto *Diag = Record.second.dyn_cast<PartialDiagnosticAt *>())
+      Details.emplace_back(Record.first, new PartialDiagnosticAt(*Diag));
+    else
+      Details.push_back(Record);
+}
+
+ConstraintSatisfaction::~ConstraintSatisfaction() {
+  //for (UnsatisfiedConstraintRecord &Record : Details)
+  //  if (auto *Diag = Record.second.dyn_cast<PartialDiagnosticAt *>())
+  //    delete Diag;
+}
 
 llvm::Optional<NormalizedConstraint>
 Sema::getNormalizedAssociatedConstraints(NamedDecl *TemplateLike) {

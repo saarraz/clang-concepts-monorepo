@@ -17,39 +17,53 @@
 using namespace clang;
 
 ASTConstraintSatisfaction::ASTConstraintSatisfaction(const ASTContext &C,
-    const ConstraintSatisfaction &Satisfaction):
-    NumRecords{Satisfaction.Details.size()},
-    IsSatisfied{Satisfaction.IsSatisfied} {
+    bool IsSatisfied, ArrayRef<UnsatisfiedConstraintRecord> Details):
+    NumRecords{Details.size()}, IsSatisfied{IsSatisfied} {
   for (unsigned I = 0; I < NumRecords; ++I) {
-    auto &Detail = Satisfaction.Details[I];
+    auto &Detail = Details[I];
     if (Detail.second.is<Expr *>())
-      new (getTrailingObjects<UnsatisfiedConstraintRecord>() + I)
-         UnsatisfiedConstraintRecord{Detail.first,
-                                     UnsatisfiedConstraintRecord::second_type(
-                                         Detail.second.get<Expr *>())};
+      new (getTrailingObjects<ASTUnsatisfiedConstraintRecord>() + I)
+          ASTUnsatisfiedConstraintRecord{
+              Detail.first,
+              ASTUnsatisfiedConstraintRecord::second_type(
+                  Detail.second.get<Expr *>())};
     else {
-      auto &SubstitutionDiagnostic =
-          *Detail.second.get<std::pair<SourceLocation, std::string> *>();
-      unsigned MessageSize = SubstitutionDiagnostic.second.size();
+      auto &SubstitutionDiag = *Detail.second.get<PartialDiagnosticAt *>();
+      llvm::SmallVector<char, 128> DiagStr;
+      SubstitutionDiag.second.EmitToString(C.getDiagnostics(), DiagStr);
+      unsigned MessageSize = DiagStr.size();
       char *Mem = new (C) char[MessageSize];
-      memcpy(Mem, SubstitutionDiagnostic.second.c_str(), MessageSize);
+      memcpy(Mem, DiagStr.data(), MessageSize);
       auto *NewSubstDiag = new (C) std::pair<SourceLocation, StringRef>(
-          SubstitutionDiagnostic.first, StringRef(Mem, MessageSize));
-      new (getTrailingObjects<UnsatisfiedConstraintRecord>() + I)
-         UnsatisfiedConstraintRecord{Detail.first,
-                                     UnsatisfiedConstraintRecord::second_type(
-                                         NewSubstDiag)};
+          SubstitutionDiag.first, StringRef(Mem, MessageSize));
+      new (getTrailingObjects<ASTUnsatisfiedConstraintRecord>() + I)
+         ASTUnsatisfiedConstraintRecord{
+            Detail.first,
+            ASTUnsatisfiedConstraintRecord::second_type(NewSubstDiag)};
     }
   }
 }
 
 
 ASTConstraintSatisfaction *
-ASTConstraintSatisfaction::Create(const ASTContext &C,
-                                  const ConstraintSatisfaction &Satisfaction) {
+ASTConstraintSatisfaction::Create(const ASTContext &C, bool IsSatisfied,
+    ArrayRef<UnsatisfiedConstraintRecord> Details) {
   std::size_t size =
-      totalSizeToAlloc<UnsatisfiedConstraintRecord>(
-          Satisfaction.Details.size());
+      totalSizeToAlloc<ASTUnsatisfiedConstraintRecord>(Details.size());
   void *Mem = C.Allocate(size, alignof(ASTConstraintSatisfaction));
-  return new (Mem) ASTConstraintSatisfaction(C, Satisfaction);
+  return new (Mem) ASTConstraintSatisfaction(C, IsSatisfied, Details);
+}
+
+ASTConstraintSatisfaction::ASTConstraintSatisfaction(bool IsSatisfied,
+                                                     unsigned NumRecords):
+    NumRecords{NumRecords}, IsSatisfied{IsSatisfied} { }
+
+
+ASTConstraintSatisfaction *
+ASTConstraintSatisfaction::Create(const ASTContext &C, bool IsSatisfied,
+                                  unsigned NumRecords) {
+  std::size_t size =
+      totalSizeToAlloc<ASTUnsatisfiedConstraintRecord>(NumRecords);
+  void *Mem = C.Allocate(size, alignof(ASTConstraintSatisfaction));
+  return new (Mem) ASTConstraintSatisfaction(IsSatisfied, NumRecords);
 }

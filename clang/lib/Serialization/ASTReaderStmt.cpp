@@ -127,6 +127,8 @@ namespace clang {
     void ReadExplicitTemplateArgumentList(ASTTemplateArgumentListInfo &ArgList,
                                           unsigned NumTemplateArgs);
 
+    ASTConstraintSatisfaction *ReadASTConstraintSatisfaction();
+
     void VisitStmt(Stmt *S);
 #define STMT(Type, Base) \
     void Visit##Type(Type *);
@@ -735,24 +737,33 @@ void ASTStmtReader::VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *E) {
   E->setRParenLoc(ReadSourceLocation());
 }
 
-static ConstraintSatisfaction
-readConstraintSatisfaction(ASTRecordReader &Record) {
-  ConstraintSatisfaction Satisfaction;
-  Satisfaction.IsSatisfied = Record.readInt();
-  if (!Satisfaction.IsSatisfied) {
-    unsigned NumDetailRecords = Record.readInt();
-    for (unsigned i = 0; i != NumDetailRecords; ++i) {
-      Expr *ConstraintExpr = Record.readExpr();
-      if (bool IsDiagnostic = Record.readInt()) {
-        SourceLocation DiagLocation = Record.readSourceLocation();
-        std::string DiagMessage = Record.readString();
-        Satisfaction.Details.emplace_back(
-            ConstraintExpr, new (Record.getContext())
-                                ConstraintSatisfaction::SubstitutionDiagnostic{
-                                    DiagLocation, DiagMessage});
-      } else
-        Satisfaction.Details.emplace_back(ConstraintExpr, Record.readExpr());
-    }
+ASTConstraintSatisfaction *ASTStmtReader::ReadASTConstraintSatisfaction() {
+  bool IsSatisfied = Record.readInt();
+  if (IsSatisfied)
+    return ASTConstraintSatisfaction::Create(Record.getContext(), IsSatisfied,
+                                             /*NumRecords=*/0);
+  unsigned NumDetailRecords = Record.readInt();
+  auto *Satisfaction = ASTConstraintSatisfaction::Create(Record.getContext(),
+                                                         IsSatisfied,
+                                                         NumDetailRecords);
+  for (unsigned i = 0; i != NumDetailRecords; ++i) {
+    auto *Target =
+        Satisfaction->getTrailingObjects<ASTUnsatisfiedConstraintRecord>() + i;
+    Expr *ConstraintExpr = Record.readExpr();
+    if (bool IsDiagnostic = Record.readInt()) {
+      SourceLocation DiagLocation = Record.readSourceLocation();
+      std::string DiagMessage = Record.readString();
+      char *ASTDiagMessage = new (Record.getContext()) char[DiagMessage.size()];
+      memcpy(ASTDiagMessage, DiagMessage.data(), DiagMessage.size());
+      new (Target) ASTUnsatisfiedConstraintRecord(ConstraintExpr,
+          new (Record.getContext())
+              std::pair<SourceLocation,
+                        StringRef>{DiagLocation,
+                                   StringRef(ASTDiagMessage,
+                                             DiagMessage.size())});
+    } else
+      new (Target) ASTUnsatisfiedConstraintRecord(ConstraintExpr,
+                                                  Record.readExpr());
   }
   return Satisfaction;
 }
@@ -767,9 +778,7 @@ void ASTStmtReader::VisitConceptSpecializationExpr(
   E->FoundDecl = ReadDeclAs<NamedDecl>();
   E->NamedConcept = ReadDeclAs<ConceptDecl>();
   if (!E->isValueDependent())
-    E->Satisfaction =
-        ASTConstraintSatisfaction::Create(Record.getContext(),
-                                          readConstraintSatisfaction(Record));
+    E->Satisfaction = ReadASTConstraintSatisfaction();
   const ASTTemplateArgumentListInfo *ArgsAsWritten =
       Record.readASTTemplateArgumentListInfo();
   llvm::SmallVector<TemplateArgument, 4> Args;
@@ -868,7 +877,7 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
           R = new (Record.getContext()) NestedRequirement(E);
         else
           R = new (Record.getContext()) NestedRequirement(Record.getContext(),
-              E, readConstraintSatisfaction(Record));
+              E, ReadASTConstraintSatisfaction());
       } break;
     }
     if (!R)

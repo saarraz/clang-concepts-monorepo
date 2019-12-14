@@ -22,16 +22,17 @@
 #include <utility>
 namespace clang {
 class ConceptDecl;
-class ConstraintSatisfaction;
 
 /// Pairs of unsatisfied atomic constraint expressions along with the
 /// substituted constraint expr, if the template arguments could be
 /// substituted into them, or a diagnostic if substitution resulted in
 /// an invalid expression.
-using UnsatisfiedConstraintRecord =
+using ASTUnsatisfiedConstraintRecord =
     std::pair<const Expr *,
               llvm::PointerUnion<Expr *,
                                  std::pair<SourceLocation, StringRef> *>>;
+using UnsatisfiedConstraintRecord =
+    std::pair<const Expr *, llvm::PointerUnion<Expr *, PartialDiagnosticAt *>>;
 
 /// \brief The result of a constraint satisfaction check, containing the
 /// necessary information to diagnose an unsatisfied constraint.
@@ -39,23 +40,32 @@ using UnsatisfiedConstraintRecord =
 /// This is safe to store in an AST node, as opposed to ConstraintSatisfaction.
 struct ASTConstraintSatisfaction final :
     llvm::TrailingObjects<ASTConstraintSatisfaction,
-                          UnsatisfiedConstraintRecord> {
+                          ASTUnsatisfiedConstraintRecord> {
+  friend class ASTStmtReader;
   std::size_t NumRecords;
   bool IsSatisfied : 1;
 
-  const UnsatisfiedConstraintRecord *begin() const {
-    return getTrailingObjects<UnsatisfiedConstraintRecord>();
+  const ASTUnsatisfiedConstraintRecord *begin() const {
+    return getTrailingObjects<ASTUnsatisfiedConstraintRecord>();
   }
 
-  const UnsatisfiedConstraintRecord *end() const {
-    return getTrailingObjects<UnsatisfiedConstraintRecord>() + NumRecords;
+  const ASTUnsatisfiedConstraintRecord *end() const {
+    return getTrailingObjects<ASTUnsatisfiedConstraintRecord>() + NumRecords;
   }
 
-  ASTConstraintSatisfaction(const ASTContext &C,
-                            const ConstraintSatisfaction &Satisfaction);
+  ASTConstraintSatisfaction(const ASTContext &C, bool IsSatisfied,
+                            ArrayRef<UnsatisfiedConstraintRecord> Details);
 
   static ASTConstraintSatisfaction *
-  Create(const ASTContext &C, const ConstraintSatisfaction &Satisfaction);
+  Create(const ASTContext &C, bool IsSatisfied,
+         ArrayRef<UnsatisfiedConstraintRecord> Details);
+
+private:
+
+  ASTConstraintSatisfaction(bool IsSatisfied, unsigned NumRecords);
+
+  static ASTConstraintSatisfaction *
+  Create(const ASTContext &C, bool IsSatisfied, unsigned NumRecords);
 };
 
 /// \brief Common data class for constructs that reference concepts with

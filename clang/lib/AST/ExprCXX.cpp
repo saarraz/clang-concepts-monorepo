@@ -1687,7 +1687,9 @@ ConceptSpecializationExpr::ConceptSpecializationExpr(const ASTContext &C,
                        NamedConcept, ArgsAsWritten),
       NumTemplateArgs(ConvertedArgs.size()),
       Satisfaction(
-          Satisfaction ? ASTConstraintSatisfaction::Create(C, *Satisfaction)
+          Satisfaction
+          ? ASTConstraintSatisfaction::Create(C, Satisfaction->IsSatisfied,
+                                              Satisfaction->Details)
           : nullptr) {
   setTemplateArguments(ArgsAsWritten, ConvertedArgs);
 }

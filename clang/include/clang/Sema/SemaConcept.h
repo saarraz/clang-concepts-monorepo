@@ -40,13 +40,12 @@ public:
 
   ConstraintSatisfaction() = default;
 
+  ConstraintSatisfaction(ConstraintSatisfaction &Other);
+
   ConstraintSatisfaction(NamedDecl *ConstraintOwner,
                          ArrayRef<TemplateArgument> TemplateArgs) :
       ConstraintOwner(ConstraintOwner), TemplateArgs(TemplateArgs.begin(),
                                                      TemplateArgs.end()) { }
-
-  using SubstitutionDiagnostic = std::pair<SourceLocation, std::string>;
-  using Detail = llvm::PointerUnion<Expr *, SubstitutionDiagnostic *>;
 
   bool IsSatisfied = false;
 
@@ -54,7 +53,7 @@ public:
   /// substituted constraint expr, if the template arguments could be
   /// substituted into them, or a diagnostic if substitution resulted in an
   /// invalid expression.
-  llvm::SmallVector<std::pair<const Expr *, Detail>, 4> Details;
+  llvm::SmallVector<UnsatisfiedConstraintRecord, 4> Details;
 
   void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &C) {
     Profile(ID, C, ConstraintOwner, TemplateArgs);
@@ -63,6 +62,8 @@ public:
   static void Profile(llvm::FoldingSetNodeID &ID, const ASTContext &C,
                       NamedDecl *ConstraintOwner,
                       ArrayRef<TemplateArgument> TemplateArgs);
+
+  ~ConstraintSatisfaction();
 };
 
 struct AtomicConstraint {
@@ -472,10 +473,9 @@ public:
   NestedRequirement(Sema &S, Expr *Constraint,
                     const MultiLevelTemplateArgumentList &TemplateArgs);
   NestedRequirement(ASTContext &C, Expr *Constraint,
-                    const ConstraintSatisfaction &Satisfaction) :
-      Requirement(RK_Nested, false, false, Satisfaction.IsSatisfied),
-      ConstraintExpr(Constraint),
-      Satisfaction(ASTConstraintSatisfaction::Create(C, Satisfaction)) {}
+                    const ASTConstraintSatisfaction *Satisfaction) :
+      Requirement(RK_Nested, false, false, Satisfaction->IsSatisfied),
+      ConstraintExpr(Constraint), Satisfaction(Satisfaction) {}
 
   Expr *getConstraintExpr() const {
     return ConstraintExpr;
