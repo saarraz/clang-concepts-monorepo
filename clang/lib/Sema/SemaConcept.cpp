@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "clang/Sema/SemaConcept.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaInternal.h"
 #include "clang/Sema/SemaDiagnostic.h"
@@ -23,7 +24,8 @@
 using namespace clang;
 using namespace sema;
 
-bool Sema::CheckConstraintExpression(Expr *ConstraintExpression) {
+bool Sema::CheckConstraintExpression(Expr *ConstraintExpression,
+                                     Expr **Culprit) {
   // C++2a [temp.constr.atomic]p1
   // ..E shall be a constant expression of type bool.
 
@@ -45,6 +47,8 @@ bool Sema::CheckConstraintExpression(Expr *ConstraintExpression) {
     Diag(ConstraintExpression->getExprLoc(),
          diag::err_non_bool_atomic_constraint) << Type
         << ConstraintExpression->getSourceRange();
+    if (Culprit)
+      *Culprit = ConstraintExpression;
     return false;
   }
   return true;
@@ -417,123 +421,20 @@ void Sema::DiagnoseUnsatisfiedConstraint(
   }
 }
 
-namespace {
-struct AtomicConstraint {
-  const Expr *ConstraintExpr;
-  llvm::Optional<llvm::SmallVector<TemplateArgumentLoc, 3>> ParameterMapping;
-
-  AtomicConstraint(Sema &S, const Expr *ConstraintExpr) :
-      ConstraintExpr(ConstraintExpr) { };
-
-  bool hasMatchingParameterMapping(ASTContext &C,
-                                   const AtomicConstraint &Other) const {
-    if (!ParameterMapping != !Other.ParameterMapping)
-      return false;
-    if (!ParameterMapping)
-      return true;
-    if (ParameterMapping->size() != Other.ParameterMapping->size())
-      return false;
-
-    for (unsigned I = 0, S = ParameterMapping->size(); I < S; ++I)
-      if (!C.getCanonicalTemplateArgument((*ParameterMapping)[I].getArgument())
-               .structurallyEquals(C.getCanonicalTemplateArgument(
-                  (*Other.ParameterMapping)[I].getArgument())))
-        return false;
-    return true;
+const NormalizedConstraint *
+Sema::getNormalizedAssociatedConstraints(
+    NamedDecl *ConstrainedDecl, ArrayRef<const Expr *> AssociatedConstraints) {
+  auto CacheEntry = NormalizationCache.find(ConstrainedDecl);
+  if (CacheEntry == NormalizationCache.end()) {
+    auto Normalized =
+        NormalizedConstraint::fromConstraintExprs(*this, ConstrainedDecl,
+                                                  AssociatedConstraints);
+    CacheEntry = NormalizationCache.try_emplace(ConstrainedDecl,
+                                                Normalized).first;
   }
-
-  bool subsumes(ASTContext &C, const AtomicConstraint &Other) const {
-    // C++ [temp.constr.order] p2
-    //   - an atomic constraint A subsumes another atomic constraint B
-    //     if and only if the A and B are identical [...]
-    //
-    // C++ [temp.constr.atomic] p2
-    //   Two atomic constraints are identical if they are formed from the
-    //   same expression and the targets of the parameter mappings are
-    //   equivalent according to the rules for expressions [...]
-
-    // We do not actually substitute the parameter mappings into the
-    // constraint expressions, therefore the constraint expressions are
-    // the originals, and comparing them will suffice.
-    if (ConstraintExpr != Other.ConstraintExpr)
-      return false;
-
-    // Check that the parameter lists are identical
-    return hasMatchingParameterMapping(C, Other);
-  }
-};
-
-/// \brief A normalized constraint, as defined in C++ [temp.constr.normal], is
-/// either an atomic constraint, a conjunction of normalized constraints or a
-/// disjunction of normalized constraints.
-struct NormalizedConstraint {
-  enum CompoundConstraintKind { CCK_Conjunction, CCK_Disjunction };
-
-  using CompoundConstraint = llvm::PointerIntPair<
-      std::pair<NormalizedConstraint, NormalizedConstraint> *, 1,
-      CompoundConstraintKind>;
-
-  llvm::PointerUnion<AtomicConstraint *, CompoundConstraint> Constraint;
-
-  NormalizedConstraint(AtomicConstraint *C): Constraint{C} { };
-  NormalizedConstraint(ASTContext &C, NormalizedConstraint LHS,
-                       NormalizedConstraint RHS, CompoundConstraintKind Kind)
-      : Constraint{CompoundConstraint{
-            new (C) std::pair<NormalizedConstraint, NormalizedConstraint>{LHS,
-                                                                          RHS},
-            Kind}} { };
-
-  CompoundConstraintKind getCompoundKind() const {
-    assert(!isAtomic() && "getCompoundKind called on atomic constraint.");
-    return Constraint.get<CompoundConstraint>().getInt();
-  }
-
-  bool isAtomic() const { return Constraint.is<AtomicConstraint *>(); }
-
-  NormalizedConstraint &getLHS() const {
-    assert(!isAtomic() && "getLHS called on atomic constraint.");
-    return Constraint.get<CompoundConstraint>().getPointer()->first;
-  }
-
-  NormalizedConstraint &getRHS() const {
-    assert(!isAtomic() && "getRHS called on atomic constraint.");
-    return Constraint.get<CompoundConstraint>().getPointer()->second;
-  }
-
-  AtomicConstraint *getAtomicConstraint() const {
-    assert(isAtomic() &&
-           "getAtomicConstraint called on non-atomic constraint.");
-    return Constraint.get<AtomicConstraint *>();
-  }
-
-  static llvm::Optional<NormalizedConstraint>
-  fromConstraintExprs(Sema &S, NamedDecl *D, ArrayRef<const Expr *> E) {
-    assert(E.size() != 0);
-    auto First = fromConstraintExpr(S, D, E[0]);
-    if (E.size() == 1)
-      return First;
-    auto Second = fromConstraintExpr(S, D, E[1]);
-    if (!Second)
-      return llvm::Optional<NormalizedConstraint>{};
-    llvm::Optional<NormalizedConstraint> Conjunction;
-    Conjunction.emplace(S.Context, std::move(*First), std::move(*Second),
-                        CCK_Conjunction);
-    for (unsigned I = 2; I < E.size(); ++I) {
-      auto Next = fromConstraintExpr(S, D, E[I]);
-      if (!Next)
-        return llvm::Optional<NormalizedConstraint>{};
-      NormalizedConstraint NewConjunction(S.Context, std::move(*Conjunction),
-                                          std::move(*Next), CCK_Conjunction);
-      *Conjunction = std::move(NewConjunction);
-    }
-    return Conjunction;
-  }
-
-private:
-  static llvm::Optional<NormalizedConstraint> fromConstraintExpr(Sema &S,
-                                                                 NamedDecl *D,
-                                                                 const Expr *E);
-};
+  return CacheEntry->second.hasValue() ? &CacheEntry->second.getValue() :
+      nullptr;
+}
 
 static bool substituteParameterMappings(Sema &S, NormalizedConstraint &N,
     ConceptDecl *Concept, ArrayRef<TemplateArgument> TemplateArgs,
@@ -585,6 +486,29 @@ static bool substituteParameterMappings(Sema &S, NormalizedConstraint &N,
   return false;
 }
 
+Optional<NormalizedConstraint>
+NormalizedConstraint::fromConstraintExprs(Sema &S, NamedDecl *D,
+                                          ArrayRef<const Expr *> E) {
+  assert(E.size() != 0);
+  auto First = fromConstraintExpr(S, D, E[0]);
+  if (E.size() == 1)
+    return First;
+  auto Second = fromConstraintExpr(S, D, E[1]);
+  if (!Second)
+    return llvm::Optional<NormalizedConstraint>{};
+  llvm::Optional<NormalizedConstraint> Conjunction;
+  Conjunction.emplace(std::move(*First), std::move(*Second), CCK_Conjunction);
+  for (unsigned I = 2; I < E.size(); ++I) {
+    auto Next = fromConstraintExpr(S, D, E[I]);
+    if (!Next)
+      return llvm::Optional<NormalizedConstraint>{};
+    NormalizedConstraint NewConjunction(std::move(*Conjunction),
+                                        std::move(*Next), CCK_Conjunction);
+    *Conjunction = std::move(NewConjunction);
+  }
+  return Conjunction;
+}
+
 llvm::Optional<NormalizedConstraint>
 NormalizedConstraint::fromConstraintExpr(Sema &S, NamedDecl *D, const Expr *E) {
   assert(E != nullptr);
@@ -604,11 +528,11 @@ NormalizedConstraint::fromConstraintExpr(Sema &S, NamedDecl *D, const Expr *E) {
         return None;
 
       return NormalizedConstraint(
-          S.Context, *LHS, *RHS,
+          std::move(*LHS), std::move(*RHS),
           BO->getOpcode() == BO_LAnd ? CCK_Conjunction : CCK_Disjunction);
     }
   } else if (auto *CSE = dyn_cast<const ConceptSpecializationExpr>(E)) {
-    Optional<NormalizedConstraint> SubNF;
+    const NormalizedConstraint *SubNF;
     {
       Sema::InstantiatingTemplate Inst(
           S, CSE->getExprLoc(),
@@ -623,23 +547,25 @@ NormalizedConstraint::fromConstraintExpr(Sema &S, NamedDecl *D, const Expr *E) {
       // constraint. If any such substitution results in an invalid type or
       // expression, the program is ill-formed; no diagnostic is required.
       // [...]
-      SubNF = fromConstraintExpr(S, CSE->getNamedConcept(),
-                                 CSE->getNamedConcept()->getConstraintExpr());
+      ConceptDecl *CD = CSE->getNamedConcept();
+      SubNF = S.getNormalizedAssociatedConstraints(CD,
+                                                   {CD->getConstraintExpr()});
       if (!SubNF)
         return None;
     }
 
+    Optional<NormalizedConstraint> New;
+    New.emplace(*SubNF);
+
     if (substituteParameterMappings(
-            S, *SubNF, CSE->getNamedConcept(),
+            S, *New, CSE->getNamedConcept(),
             CSE->getTemplateArguments(), CSE->getTemplateArgsAsWritten()))
       return None;
 
-    return SubNF;
+    return New;
   }
-  return NormalizedConstraint{new (S.Context) AtomicConstraint(S, E)};
+  return NormalizedConstraint{new AtomicConstraint(S, E)};
 }
-
-} // namespace
 
 using NormalForm =
     llvm::SmallVector<llvm::SmallVector<AtomicConstraint *, 2>, 4>;
@@ -703,18 +629,20 @@ static NormalForm makeDNF(const NormalizedConstraint &Normalized) {
   return Res;
 }
 
+template<typename AtomicSubsumptionEvaluator>
 static bool subsumes(Sema &S, NamedDecl *DP, ArrayRef<const Expr *> P,
-                     NamedDecl *DQ, ArrayRef<const Expr *> Q, bool &Subsumes) {
+                     NamedDecl *DQ, ArrayRef<const Expr *> Q, bool &Subsumes,
+                     AtomicSubsumptionEvaluator E) {
   // C++ [temp.constr.order] p2
   //   In order to determine if a constraint P subsumes a constraint Q, P is
   //   transformed into disjunctive normal form, and Q is transformed into
   //   conjunctive normal form. [...]
-  auto PNormalized = NormalizedConstraint::fromConstraintExprs(S, DP, P);
+  auto *PNormalized = S.getNormalizedAssociatedConstraints(DP, P);
   if (!PNormalized)
     return true;
   const NormalForm PDNF = makeDNF(*PNormalized);
 
-  auto QNormalized = NormalizedConstraint::fromConstraintExprs(S, DQ, Q);
+  auto *QNormalized = S.getNormalizedAssociatedConstraints(DQ, Q);
   if (!QNormalized)
     return true;
   const NormalForm QCNF = makeCNF(*QNormalized);
@@ -733,7 +661,7 @@ static bool subsumes(Sema &S, NamedDecl *DP, ArrayRef<const Expr *> P,
       bool Found = false;
       for (const AtomicConstraint *Pia : Pi) {
         for (const AtomicConstraint *Qjb : Qj) {
-          if (Pia->subsumes(S.Context, *Qjb)) {
+          if (E(*Pia, *Qjb)) {
             Found = true;
             break;
           }
@@ -770,8 +698,78 @@ bool Sema::IsAtLeastAsConstrained(NamedDecl *D1, ArrayRef<const Expr *> AC1,
     Result = CacheEntry->second;
     return false;
   }
-  if (subsumes(*this, D1, AC1, D2, AC2, Result))
+
+  if (subsumes(*this, D1, AC1, D2, AC2, Result,
+        [this] (const AtomicConstraint &A, const AtomicConstraint &B) {
+          return A.subsumes(Context, B);
+        }))
     return true;
   SubsumptionCache.try_emplace(Key, Result);
   return false;
+}
+
+bool Sema::MaybeEmitAmbiguousAtomicConstraintsDiagnostic(NamedDecl *D1,
+    ArrayRef<const Expr *> AC1, NamedDecl *D2, ArrayRef<const Expr *> AC2) {
+  if (AC1.empty() || AC2.empty())
+    return false;
+
+  auto NormalExprEvaluator =
+      [this] (const AtomicConstraint &A, const AtomicConstraint &B) {
+        return A.subsumes(Context, B);
+      };
+
+  const Expr *AmbiguousAtomic1 = nullptr, *AmbiguousAtomic2 = nullptr;
+  auto IdenticalExprEvaluator =
+      [&] (const AtomicConstraint &A, const AtomicConstraint &B) {
+        if (!A.hasMatchingParameterMapping(Context, B))
+          return false;
+        const Expr *EA = A.ConstraintExpr, *EB = B.ConstraintExpr;
+        if (EA == EB)
+          return true;
+
+        // Not the same source level expression - are the expressions
+        // identical?
+        llvm::FoldingSetNodeID IDA, IDB;
+        EA->Profile(IDA, Context, /*Cannonical=*/true);
+        EB->Profile(IDB, Context, /*Cannonical=*/true);
+        if (IDA != IDB)
+          return false;
+
+        AmbiguousAtomic1 = EA;
+        AmbiguousAtomic2 = EB;
+        return true;
+      };
+
+  {
+    // The subsumption checks might cause diagnostics
+    SFINAETrap Trap(*this);
+    bool Is1AtLeastAs2Normally, Is2AtLeastAs1Normally;
+    if (subsumes(*this, D1, AC1, D2, AC2, Is1AtLeastAs2Normally,
+                 NormalExprEvaluator))
+      return false;
+    if (subsumes(*this, D2, AC2, D1, AC1, Is2AtLeastAs1Normally,
+                 NormalExprEvaluator))
+      return false;
+    bool Is1AtLeastAs2, Is2AtLeastAs1;
+    if (subsumes(*this, D1, AC1, D2, AC2, Is1AtLeastAs2,
+                 IdenticalExprEvaluator))
+      return false;
+    if (subsumes(*this, D2, AC2, D1, AC1, Is2AtLeastAs1,
+                 IdenticalExprEvaluator))
+      return false;
+    if (Is1AtLeastAs2 == Is1AtLeastAs2Normally &&
+        Is2AtLeastAs1 == Is2AtLeastAs1Normally)
+      // Same result - no ambiguity was caused by identical atomic expressions.
+      return false;
+  }
+
+  // A different result! Some ambiguous atomic constraint(s) caused a difference
+  assert(AmbiguousAtomic1 && AmbiguousAtomic2);
+
+  Diag(AmbiguousAtomic1->getBeginLoc(), diag::note_ambiguous_atomic_constraints)
+      << AmbiguousAtomic1->getSourceRange();
+  Diag(AmbiguousAtomic2->getBeginLoc(),
+       diag::note_ambiguous_atomic_constraints_similar_expression)
+      << AmbiguousAtomic2->getSourceRange();
+  return true;
 }
