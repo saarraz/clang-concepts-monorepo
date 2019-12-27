@@ -5893,7 +5893,8 @@ public:
                                    NamedDecl *ScopeLookupResult,
                                    bool ErrorRecoveryLookup,
                                    bool *IsCorrectedToColon = nullptr,
-                                   bool OnlyNamespace = false);
+                                   bool OnlyNamespace = false,
+                                   bool SuppressDiagnostics = false);
 
   /// The parser has parsed a nested-name-specifier 'identifier::'.
   ///
@@ -5919,6 +5920,8 @@ public:
   ///
   /// \param OnlyNamespace If true, only considers namespaces in lookup.
   ///
+  /// \param SuppressDiagnostic If true, suppress diagnostic on error.
+  ///
   /// \returns true if an error occurred, false otherwise.
   bool ActOnCXXNestedNameSpecifier(Scope *S,
                                    NestedNameSpecInfo &IdInfo,
@@ -5926,7 +5929,8 @@ public:
                                    CXXScopeSpec &SS,
                                    bool ErrorRecoveryLookup = false,
                                    bool *IsCorrectedToColon = nullptr,
-                                   bool OnlyNamespace = false);
+                                   bool OnlyNamespace = false,
+                                   bool SuppressDiagnostic = false);
 
   ExprResult ActOnDecltypeExpression(Expr *E);
 
@@ -6256,12 +6260,6 @@ public:
   bool CheckConstraintSatisfaction(const Expr *ConstraintExpr,
                                    ConstraintSatisfaction &Satisfaction);
 
-  /// Check that the associated constraints of a template declaration match the
-  /// associated constraints of an older declaration of which it is a
-  /// redeclaration.
-  bool CheckRedeclarationConstraintMatch(TemplateParameterList *Old,
-                                         TemplateParameterList *New);
-
   /// \brief Ensure that the given template arguments satisfy the constraints
   /// associated with the given template, emitting a diagnostic if they do not.
   ///
@@ -6294,9 +6292,8 @@ public:
   void DiagnoseUnsatisfiedIllFormedConstraint(SourceLocation DiagnosticLocation,
                                               StringRef Diagnostic);
 
-  void
-  DiagnoseRedeclarationConstraintMismatch(const TemplateParameterList *Old,
-                                          const TemplateParameterList *New);
+  void DiagnoseRedeclarationConstraintMismatch(SourceLocation Old,
+                                               SourceLocation New);
 
   // ParseObjCStringLiteral - Parse Objective-C string literals.
   ExprResult ParseObjCStringLiteral(SourceLocation *AtLocs,
@@ -6824,7 +6821,8 @@ public:
                                   ParsedType ObjectType,
                                   bool EnteringContext,
                                   TemplateTy &Template,
-                                  bool &MemberOfUnknownSpecialization);
+                                  bool &MemberOfUnknownSpecialization,
+                                  NamedDecl **FoundDecl = nullptr);
 
   /// Try to resolve an undeclared template name as a type template.
   ///
@@ -6865,13 +6863,24 @@ public:
   TemplateDecl *AdjustDeclIfTemplate(Decl *&Decl);
 
   NamedDecl *ActOnTypeParameter(Scope *S, bool Typename,
-                           SourceLocation EllipsisLoc,
-                           SourceLocation KeyLoc,
-                           IdentifierInfo *ParamName,
-                           SourceLocation ParamNameLoc,
-                           unsigned Depth, unsigned Position,
-                           SourceLocation EqualLoc,
-                           ParsedType DefaultArg);
+                                SourceLocation EllipsisLoc,
+                                SourceLocation KeyLoc,
+                                IdentifierInfo *ParamName,
+                                SourceLocation ParamNameLoc,
+                                unsigned Depth, unsigned Position,
+                                SourceLocation EqualLoc,
+                                ParsedType DefaultArg, bool HasTypeConstraint);
+
+  bool ActOnTypeConstraint(TemplateIdAnnotation *TypeConstraint,
+                           TemplateTypeParmDecl *ConstrainedParameter,
+                           SourceLocation EllipsisLoc);
+
+  bool AttachTypeConstraint(NestedNameSpecifierLoc NS,
+                            DeclarationNameInfo NameInfo,
+                            ConceptDecl *NamedConcept,
+                            const TemplateArgumentListInfo *TemplateArgs,
+                            TemplateTypeParmDecl *ConstrainedParameter,
+                            SourceLocation EllipsisLoc);
 
   QualType CheckNonTypeTemplateParameterType(TypeSourceInfo *&TSI,
                                              SourceLocation Loc);
@@ -6993,8 +7002,8 @@ public:
   ExprResult
   CheckConceptTemplateId(const CXXScopeSpec &SS,
                          SourceLocation TemplateKWLoc,
-                         SourceLocation ConceptNameLoc, NamedDecl *FoundDecl,
-                         ConceptDecl *NamedConcept,
+                         const DeclarationNameInfo &ConceptNameInfo,
+                         NamedDecl *FoundDecl, ConceptDecl *NamedConcept,
                          const TemplateArgumentListInfo *TemplateArgs);
 
   void diagnoseMissingTemplateArguments(TemplateName Name, SourceLocation Loc);
@@ -7153,7 +7162,8 @@ public:
                                    QualType InstantiatedParamType, Expr *Arg,
                                    TemplateArgument &Converted,
                                CheckTemplateArgumentKind CTAK = CTAK_Specified);
-  bool CheckTemplateTemplateArgument(TemplateParameterList *Params,
+  bool CheckTemplateTemplateArgument(TemplateTemplateParmDecl *Param,
+                                     TemplateParameterList *Params,
                                      TemplateArgumentLoc &Arg);
 
   ExprResult
@@ -7346,7 +7356,10 @@ public:
     UPPC_Lambda,
 
     /// Block expression,
-    UPPC_Block
+    UPPC_Block,
+
+    /// A type constraint,
+    UPPC_TypeConstraint
   };
 
   /// Diagnose unexpanded parameter packs.
@@ -7839,7 +7852,7 @@ public:
                                     sema::TemplateDeductionInfo &Info);
 
   bool isTemplateTemplateParameterAtLeastAsSpecializedAs(
-      TemplateParameterList *P, TemplateDecl *AArg, SourceLocation Loc);
+      TemplateParameterList *PParam, TemplateDecl *AArg, SourceLocation Loc);
 
   void MarkUsedTemplateParameters(const Expr *E, bool OnlyDeduced,
                                   unsigned Depth, llvm::SmallBitVector &Used);

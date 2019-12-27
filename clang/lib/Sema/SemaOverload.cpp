@@ -12022,17 +12022,17 @@ Sema::resolveAddressOfSingleOverloadCandidate(Expr *E, DeclAccessPair &Pair) {
       SmallVector<const Expr *, 1> ResultAC, FDAC;
       Result->getAssociatedConstraints(ResultAC);
       FD->getAssociatedConstraints(FDAC);
-      bool ResultMoreConstrained, FDMoreConstrained;
+      bool ResultAtLeastAsConstrained, FDAtLeastAsConstrained;
       if (IsAtLeastAsConstrained(Result, ResultAC, FD, FDAC,
-                                 ResultMoreConstrained))
+                                 ResultAtLeastAsConstrained))
         return nullptr;
       if (IsAtLeastAsConstrained(FD, FDAC, Result, ResultAC,
-                                 FDMoreConstrained))
+                                 FDAtLeastAsConstrained))
         return nullptr;
-      if (ResultMoreConstrained == FDMoreConstrained) {
+      if (ResultAtLeastAsConstrained == FDAtLeastAsConstrained) {
         IsResultAmbiguous = true;
         continue;
-      } else if (ResultMoreConstrained)
+      } else if (ResultAtLeastAsConstrained)
         continue;
       // FD is more constrained replace Result with it.
     }

@@ -21,7 +21,7 @@ endif()
 
 # Create custom target to generate the VC revision include.
 add_custom_command(OUTPUT "${version_inc}"
-  DEPENDS "${llvm_vc}" "${clang_vc}" "${generate_vcs_version_script}"
+  DEPENDS "${generate_vcs_version_script}"
   COMMAND ${CMAKE_COMMAND} "-DNAMES=\"LLVM;CLANG\""
                            "-DLLVM_SOURCE_DIR=${llvm_source_dir}"
                            "-DCLANG_SOURCE_DIR=${clang_source_dir}"

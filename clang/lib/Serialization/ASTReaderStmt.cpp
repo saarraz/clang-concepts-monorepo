@@ -730,7 +730,7 @@ void ASTStmtReader::VisitConceptSpecializationExpr(
   unsigned NumTemplateArgs = Record.readInt();
   E->NestedNameSpec = Record.readNestedNameSpecifierLoc();
   E->TemplateKWLoc = Record.readSourceLocation();
-  E->ConceptNameLoc = Record.readSourceLocation();
+  E->ConceptName = Record.readDeclarationNameInfo();
   E->FoundDecl = readDeclAs<NamedDecl>();
   E->NamedConcept = readDeclAs<ConceptDecl>();
   const ASTTemplateArgumentListInfo *ArgsAsWritten =
