@@ -4165,11 +4165,17 @@ bool Sema::CheckInstantiatedFunctionTemplateConstraints(
   // If this is not an explicit specialization - we need to get the instantiated
   // version of the template arguments and add them to scope for the
   // substitution.
-  if (Decl->isTemplateInstantiation())
+  if (Decl->isTemplateInstantiation()) {
+    InstantiatingTemplate Inst(*this, Decl->getPointOfInstantiation(),
+        InstantiatingTemplate::ConstraintsCheck{}, Decl->getPrimaryTemplate(),
+        MLTAL.getInnermost(), SourceRange());
+    if (Inst.isInvalid())
+      return true;
     if (addInstantiatedParametersToScope(*this, Decl,
                                         Decl->getTemplateInstantiationPattern(),
                                          Scope, MLTAL))
       return true;
+  }
 
   FunctionTemplateDecl *Template = Decl->getPrimaryTemplate();
   // Note - code synthesis context for the constraints check is created
