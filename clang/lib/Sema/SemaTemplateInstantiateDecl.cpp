@@ -4179,7 +4179,7 @@ bool Sema::CheckInstantiatedFunctionTemplateConstraints(
   if (Decl->isTemplateInstantiation()) {
     InstantiatingTemplate Inst(*this, Decl->getPointOfInstantiation(),
         InstantiatingTemplate::ConstraintsCheck{}, Decl->getPrimaryTemplate(),
-        MLTAL.getInnermost(), am "SourceRange());
+        MLTAL.getInnermost(), SourceRange());
     if (Inst.isInvalid())
       return true;
     if (addInstantiatedParametersToScope(*this, Decl,
