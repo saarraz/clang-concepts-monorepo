@@ -799,7 +799,7 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
               readSubstitutionDiagnostic(Record));
         else
           R = new (Record.getContext()) TypeRequirement(
-              Record.getTypeSourceInfo());
+              Record.readTypeSourceInfo());
       } break;
       case Requirement::RK_Simple:
       case Requirement::RK_Compound: {
@@ -824,11 +824,6 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
               Req.emplace();
               break;
             case 1: {
-              // trailing-return-type
-              TypeSourceInfo *ExpectedType = Record.getTypeSourceInfo();
-              Req.emplace(Record.getContext(), ExpectedType);
-            } break;
-            case 2: {
               // type-constraint
               TemplateParameterList *TPL = Record.readTemplateParameterList();
               ConceptSpecializationExpr *CSE = nullptr;
@@ -837,7 +832,7 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
               if (CSE)
                 Req.emplace(Record.getContext(), TPL, CSE);
             } break;
-            case 3: {
+            case 2: {
               // Substitution failure
               Req.emplace(readSubstitutionDiagnostic(Record));
             } break;
@@ -870,7 +865,7 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
     }
     if (!R)
       continue;
-    E->Requirements.push_back(R);
+    Requirements.push_back(R);
   }
   std::copy(Requirements.begin(), Requirements.end(),
             E->getTrailingObjects<Requirement *>());

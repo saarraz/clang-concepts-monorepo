@@ -2312,9 +2312,6 @@ void StmtPrinter::VisitRequiresExpr(RequiresExpr *E) {
           OS << " -> ";
           if (RetReq.isSubstitutionFailure())
             OS << "<<error-type>>";
-          else if (RetReq.isTrailingReturnType())
-            RetReq.getTrailingReturnTypeExpectedType()->getType().print(OS,
-                                                                        Policy);
           else if (RetReq.isTypeConstraint())
             RetReq.getTypeConstraint()->print(OS, Policy);
         }

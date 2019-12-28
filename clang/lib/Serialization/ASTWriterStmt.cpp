@@ -465,20 +465,15 @@ void ASTStmtWriter::VisitRequiresExpr(RequiresExpr *E) {
         Record.AddSourceLocation(ExprReq->NoexceptLoc);
         const auto &RetReq = ExprReq->getReturnTypeRequirement();
         if (RetReq.isSubstitutionFailure()) {
-          Record.push_back(3);
-          addSubstitutionDiagnostic(Record, RetReq.getSubstitutionDiagnostic());
-        } else if (RetReq.isTrailingReturnType()) {
-          Record.push_back(1);
-          Record.AddTypeSourceInfo(RetReq.getTrailingReturnTypeExpectedType());
-        } else if (RetReq.isTypeConstraint()) {
           Record.push_back(2);
+          addSubstitutionDiagnostic(Record, RetReq.getSubstitutionDiagnostic());
+        } else if (RetReq.isTypeConstraint()) {
+          Record.push_back(1);
           Record.AddTemplateParameterList(
               RetReq.getTypeConstraintTemplateParameterList());
           if (ExprReq->Status >= ExprRequirement::SS_ConstraintsNotSatisfied)
             Record.AddStmt(
-                RetReq.Value.get<ExprRequirement::
-                                 ReturnTypeRequirement::
-                                 TypeConstraintRequirement *>()->second);
+                RetReq.getTypeConstraintSubstitutedConstraintExpr());
         } else {
           assert(RetReq.isEmpty());
           Record.push_back(0);

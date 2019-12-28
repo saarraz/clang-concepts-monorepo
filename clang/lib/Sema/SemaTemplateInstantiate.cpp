@@ -1825,22 +1825,7 @@ TemplateInstantiator::TransformExprRequirement(ExprRequirement *Req) {
     TransRetReq.emplace();
   else if (RetReq.isSubstitutionFailure())
     TransRetReq.emplace(RetReq.getSubstitutionDiagnostic());
-  else if (RetReq.isTrailingReturnType()) {
-    Sema::InstantiatingTemplate TypeInst(SemaRef, SourceLocation(), Req, Info,
-                                         SourceRange());
-    if (TypeInst.isInvalid())
-      return nullptr;
-    TypeSourceInfo *TransType = TransformType(
-        RetReq.getTrailingReturnTypeExpectedType());
-    if (!TransType)
-      TransRetReq.emplace(createSubstDiag(SemaRef, Info,
-          [&] (llvm::raw_string_ostream& OS) {
-              RetReq.getTrailingReturnTypeExpectedType()->getType().print(OS,
-                  SemaRef.getPrintingPolicy());
-          }));
-    else
-      TransRetReq.emplace(SemaRef.Context, TransType);
-  } else if (RetReq.isTypeConstraint()) {
+  else if (RetReq.isTypeConstraint()) {
     TemplateParameterList *OrigTPL =
         RetReq.getTypeConstraintTemplateParameterList();
     Sema::InstantiatingTemplate TPLInst(SemaRef, OrigTPL->getTemplateLoc(),

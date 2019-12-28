@@ -280,8 +280,6 @@ public:
       SS_ExprSubstitutionFailure,
       SS_NoexceptNotMet,
       SS_TypeRequirementSubstitutionFailure,
-      SS_ImplicitConversionAmbiguous,
-      SS_NoImplicitConversionExists,
       SS_ConstraintsNotSatisfied,
       SS_Satisfied
   };
@@ -344,9 +342,9 @@ public:
 
       const TypeConstraint *getTypeConstraint() const {
         assert(isTypeConstraint());
-        auto &Req =
-            *TypeConstraintInfo.getPointer().get<TemplateParameterList *>();
-        return cast<TemplateTypeParmDecl>(Req->getParam(0))
+        auto TPL =
+            TypeConstraintInfo.getPointer().get<TemplateParameterList *>();
+        return cast<TemplateTypeParmDecl>(TPL->getParam(0))
             ->getTypeConstraint();
       }
 

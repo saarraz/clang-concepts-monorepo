@@ -2711,10 +2711,7 @@ DEF_TRAVERSE_STMT(RequiresExpr, {
       if (!ExprReq->isExprSubstitutionFailure())
         TRY_TO(TraverseStmt(ExprReq->getExpr()));
       auto &RetReq = ExprReq->getReturnTypeRequirement();
-      if (RetReq.isTrailingReturnType())
-        TRY_TO(TraverseTypeLoc(RetReq.getTrailingReturnTypeExpectedType()
-                                   ->getTypeLoc()));
-      else if (RetReq.isTypeConstraint())
+      if (RetReq.isTypeConstraint())
         TRY_TO(TraverseTemplateParameterListHelper(
                    RetReq.getTypeConstraintTemplateParameterList()));
     } else {

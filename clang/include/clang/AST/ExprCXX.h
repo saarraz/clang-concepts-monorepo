@@ -4942,9 +4942,9 @@ class RequiresExpr final : public Expr,
   friend TrailingObjects;
   friend class ASTStmtReader;
 
-  RequiresExprBodyDecl *Body;
   unsigned NumLocalParameters;
   unsigned NumRequirements;
+  RequiresExprBodyDecl *Body;
   SourceLocation RBraceLoc;
 
   unsigned numTrailingObjects(OverloadToken<ParmVarDecl *>) const {

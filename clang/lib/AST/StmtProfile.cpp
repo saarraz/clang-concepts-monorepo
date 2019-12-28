@@ -1366,15 +1366,12 @@ void StmtProfiler::VisitRequiresExpr(const RequiresExpr *S) {
           ExprReq->getReturnTypeRequirement();
       if (RetReq.isEmpty()) {
         ID.AddInteger(0);
-      } else if (RetReq.isTrailingReturnType()) {
-        ID.AddInteger(1);
-        VisitType(RetReq.getTrailingReturnTypeExpectedType()->getType());
       } else if (RetReq.isTypeConstraint()) {
-        ID.AddInteger(2);
+        ID.AddInteger(1);
         Visit(RetReq.getTypeConstraint()->getImmediatelyDeclaredConstraint());
       } else {
         assert(RetReq.isSubstitutionFailure());
-        ID.AddInteger(3);
+        ID.AddInteger(2);
       }
     } else {
       ID.AddInteger(Requirement::RK_Nested);

@@ -866,25 +866,11 @@ ExprRequirement::ReturnTypeRequirement::ReturnTypeRequirement(ASTContext &C,
 ExprRequirement::SatisfactionStatus
 ExprRequirement::ReturnTypeRequirement::calculateSatisfaction(Sema &S,
     Expr *E) {
-  if (!Value)
+  if (isEmpty())
     return SS_Satisfied;
-  if (Value.is<SubstitutionDiagnostic *>())
+  if (isSubstitutionFailure())
     return SS_TypeRequirementSubstitutionFailure;
-  if (auto *TypeReq = Value.dyn_cast<TypeSourceInfo *>()) {
-    InitializedEntity InventedEntity =
-        InitializedEntity::InitializeResult(TypeReq->getTypeLoc().getBeginLoc(),
-                                            TypeReq->getType(), /*NRVO=*/false);
-    InitializationSequence Seq(S, InventedEntity,
-        InitializationKind::CreateCopy(E->getBeginLoc(),
-                                       TypeReq->getTypeLoc().getBeginLoc()), E);
-    if (Seq.isAmbiguous())
-      return SS_ImplicitConversionAmbiguous;
-    if (Seq.Failed())
-      return SS_NoImplicitConversionExists;
-    return SS_Satisfied;
-  }
-  auto *TypeConstr = Value.get<TypeConstraintRequirement *>();
-  TemplateParameterList *TPL = TypeConstr->first;
+  TemplateParameterList *TPL = getTypeConstraintTemplateParameterList();
 
   // C++2a [expr.prim.req]p1.3.3
   //     The immediately-declared constraint ([temp]) of decltype((E)) shall be
@@ -906,7 +892,7 @@ ExprRequirement::ReturnTypeRequirement::calculateSatisfaction(Sema &S,
          "argument into a concept specialization expression's parameter.");
 
   auto *CSE = cast<ConceptSpecializationExpr>(Constraint.get());
-  TypeConstr->second = CSE;
+  SubstitutedConstraintExpr = CSE;
   if (!CSE->isSatisfied())
     return SS_ConstraintsNotSatisfied;
   return SS_Satisfied;
@@ -949,22 +935,6 @@ void ExprRequirement::Diagnose(Sema &S, bool First) const {
           << (int)First << SubstDiag->SubstitutedEntity;
     break;
   }
-  case SS_ImplicitConversionAmbiguous:
-    S.Diag(TypeReq.getTrailingReturnTypeExpectedType()
-               ->getTypeLoc().getBeginLoc(),
-           diag::note_expr_requirement_ambiguous_conversion) << (int)First
-        << getExpr()->getType()
-        << TypeReq.getTrailingReturnTypeExpectedType()
-            ->getType();
-    break;
-  case SS_NoImplicitConversionExists:
-    S.Diag(TypeReq.getTrailingReturnTypeExpectedType()
-               ->getTypeLoc().getBeginLoc(),
-           diag::note_expr_requirement_no_implicit_conversion) << (int)First
-        << getExpr()->getType()
-        << TypeReq.getTrailingReturnTypeExpectedType()
-            ->getType();
-    break;
   case SS_ConstraintsNotSatisfied: {
     ConceptSpecializationExpr *ConstraintExpr =
         TypeReq.getTypeConstraintSubstitutedConstraintExpr();

@@ -11332,13 +11332,7 @@ TreeTransform<Derived>::TransformExprRequirement(ExprRequirement *Req) {
     TransRetReq.emplace();
   else if (RetReq.isSubstitutionFailure())
     TransRetReq.emplace(RetReq.getSubstitutionDiagnostic());
-  else if (RetReq.isTrailingReturnType()) {
-    TypeSourceInfo *TransType = getDerived().TransformType(
-        RetReq.getTrailingReturnTypeExpectedType());
-    if (!TransType)
-      return nullptr;
-    TransRetReq.emplace(getSema().Context, TransType);
-  } else if (RetReq.isTypeConstraint()) {
+  else if (RetReq.isTypeConstraint()) {
     TemplateParameterList *OrigTPL =
         RetReq.getTypeConstraintTemplateParameterList();
     TemplateParameterList *TPL =
