@@ -4154,6 +4154,17 @@ bool Sema::CheckInstantiatedFunctionTemplateConstraints(
     SourceLocation PointOfInstantiation, FunctionDecl *Decl,
     ArrayRef<TemplateArgument> TemplateArgs,
     ConstraintSatisfaction &Satisfaction) {
+  // In most cases we're not going to have constraints, so check for that first.
+  FunctionTemplateDecl *Template = Decl->getPrimaryTemplate();
+  // Note - code synthesis context for the constraints check is created
+  // inside CheckConstraintsSatisfaction.
+  SmallVector<const Expr *, 3> TemplateAC;
+  Template->getAssociatedConstraints(TemplateAC);
+  if (TemplateAC.empty()) {
+    Satisfaction.IsSatisfied = true;
+    return false;
+  }
+
   // Enter the scope of this instantiation. We don't use
   // PushDeclContext because we don't have a scope.
   Sema::ContextRAII savedContext(*this, Decl);
@@ -4168,7 +4179,7 @@ bool Sema::CheckInstantiatedFunctionTemplateConstraints(
   if (Decl->isTemplateInstantiation()) {
     InstantiatingTemplate Inst(*this, Decl->getPointOfInstantiation(),
         InstantiatingTemplate::ConstraintsCheck{}, Decl->getPrimaryTemplate(),
-        MLTAL.getInnermost(), SourceRange());
+        MLTAL.getInnermost(), am "SourceRange());
     if (Inst.isInvalid())
       return true;
     if (addInstantiatedParametersToScope(*this, Decl,
@@ -4177,11 +4188,6 @@ bool Sema::CheckInstantiatedFunctionTemplateConstraints(
       return true;
   }
 
-  FunctionTemplateDecl *Template = Decl->getPrimaryTemplate();
-  // Note - code synthesis context for the constraints check is created
-  // inside CheckConstraintsSatisfaction.
-  SmallVector<const Expr *, 3> TemplateAC;
-  Template->getAssociatedConstraints(TemplateAC);
   return CheckConstraintSatisfaction(Template, TemplateAC, TemplateArgs,
                                      PointOfInstantiation, Satisfaction);
 }
