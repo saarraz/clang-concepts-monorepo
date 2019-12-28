@@ -396,7 +396,6 @@ void ASTStmtWriter::VisitConceptSpecializationExpr(
   Record.AddNestedNameSpecifierLoc(E->getNestedNameSpecifierLoc());
   Record.AddSourceLocation(E->getTemplateKWLoc());
   Record.AddDeclarationNameInfo(E->getConceptNameInfo());
-  Record.AddDeclRef(E->getFoundDecl());
   Record.AddDeclRef(E->getNamedConcept());
   Record.AddASTTemplateArgumentListInfo(E->getTemplateArgsAsWritten());
   for (const TemplateArgument &Arg : TemplateArgs)
