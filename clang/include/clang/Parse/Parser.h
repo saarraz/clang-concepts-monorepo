@@ -801,9 +801,10 @@ private:
 public:
   // If NeedType is true, then TryAnnotateTypeOrScopeToken will try harder to
   // find a type name by attempting typo correction.
-  bool TryAnnotateTypeOrScopeToken();
-  bool TryAnnotateTypeOrScopeTokenAfterScopeSpec(CXXScopeSpec &SS,
-                                                 bool IsNewScope);
+  bool TryAnnotateTypeOrScopeToken(bool ClassTemplateDeductionContext = true);
+  bool TryAnnotateTypeOrScopeTokenAfterScopeSpec(
+      CXXScopeSpec &SS, bool IsNewScope,
+      bool ClassTemplateDeductionContext = true);
   bool TryAnnotateCXXScopeToken(bool EnteringContext = false);
 
 private:
@@ -1899,6 +1900,7 @@ private:
   //===--------------------------------------------------------------------===//
   // C++ Concepts
 
+  ExprResult ParseRequiresExpression();
   void ParseTrailingRequiresClause(Declarator &D);
 
   //===--------------------------------------------------------------------===//
@@ -2732,7 +2734,7 @@ private:
          Declarator &D,
          SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo);
   void ParseParameterDeclarationClause(
-         Declarator &D,
+         DeclaratorContext DeclaratorContext,
          ParsedAttributes &attrs,
          SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo,
          SourceLocation &EllipsisLoc);

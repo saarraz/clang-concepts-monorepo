@@ -1361,6 +1361,9 @@ namespace serialization {
       /// \brief A ConceptDecl record.
       DECL_CONCEPT,
 
+      /// \brief A RequiresExprBodyDecl record.
+      DECL_REQUIRES_EXPR_BODY,
+
       /// \brief A StaticAssertDecl record.
       DECL_STATIC_ASSERT,
 
@@ -1785,6 +1788,7 @@ namespace serialization {
       EXPR_MATERIALIZE_TEMPORARY, // MaterializeTemporaryExpr
       EXPR_CXX_FOLD,              // CXXFoldExpr
       EXPR_CONCEPT_SPECIALIZATION,// ConceptSpecializationExpr
+      EXPR_REQUIRES,              // RequiresExpr
 
       // CUDA
       EXPR_CUDA_KERNEL_CALL,       // CUDAKernelCallExpr

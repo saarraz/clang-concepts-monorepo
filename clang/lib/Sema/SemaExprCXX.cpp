@@ -8111,3 +8111,135 @@ Sema::CheckMicrosoftIfExistsSymbol(Scope *S, SourceLocation KeywordLoc,
 
   return CheckMicrosoftIfExistsSymbol(S, SS, TargetNameInfo);
 }
+
+Requirement *Sema::ActOnSimpleRequirement(Expr *E) {
+  return new (Context) ExprRequirement(*this, E, /*IsSimple=*/true,
+             /*NoexceptLoc=*/SourceLocation());
+}
+
+Requirement *Sema::ActOnTypeRequirement(SourceLocation TypenameKWLoc,
+                                        QualType Type) {
+  auto *LIT = dyn_cast<LocInfoType>(Type.getTypePtr());
+  return new (Context) TypeRequirement(
+      LIT ? LIT->getTypeSourceInfo() :
+      Context.getTrivialTypeSourceInfo(Type, TypenameKWLoc));
+}
+
+Requirement *Sema::ActOnCompoundRequirement(Expr *E,
+                                            SourceLocation NoexceptLoc) {
+  return new (Context) ExprRequirement(*this, E, /*IsSimple=*/false,
+                                       NoexceptLoc);
+}
+
+Requirement *Sema::ActOnCompoundRequirement(Expr *E, SourceLocation NoexceptLoc,
+                                            TypeSourceInfo *ExpectedType) {
+  if (ExpectedType->getType().getTypePtr()->isUndeducedType()) {
+    auto *Auto = ExpectedType->getType()->getContainedAutoType();
+    Diag(ExpectedType->getTypeLoc().getBeginLoc(),
+         diag::err_auto_not_allowed_in_return_type_requirement)
+        << (unsigned)Auto->getKeyword();
+    return nullptr;
+  }
+  return new (Context) ExprRequirement(*this, E, /*IsSimple=*/false,
+             NoexceptLoc, ExprRequirement::ReturnTypeRequirement(Context,
+                                                                 ExpectedType));
+}
+
+Requirement *
+Sema::ActOnCompoundRequirement(Expr *E, SourceLocation NoexceptLoc,
+                               TemplateIdAnnotation *TypeConstraint,
+                               unsigned Depth) {
+  // C++2a [expr.prim.req.compound] p1.3.3
+  //   [..] the expression is deduced against an invented function template
+  //   F [...] F is a void function template with a single type template
+  //   parameter T declared with the constrained-parameter. Form a new
+  //   cv-qualifier-seq cv by taking the union of const and volatile specifiers
+  //   around the constrained-parameter. F has a single parameter whose
+  //   type-specifier is cv T followed by the abstract-declarator. [...]
+  //
+  // The cv part is done in the calling function - we get the concept with
+  // arguments and the abstract declarator with the correct CV qualification and
+  // have to synthesize T and the single parameter of F.
+  auto &II = Context.Idents.get("expr-type");
+  auto *TParam = TemplateTypeParmDecl::Create(Context, CurContext,
+                                              SourceLocation(),
+                                              SourceLocation(), Depth,
+                                              /*Index=*/0, &II,
+                                              /*Typename=*/true,
+                                              /*ParameterPack=*/false,
+                                              /*HasTypeConstraint=*/true);
+
+  if (ActOnTypeConstraint(TypeConstraint, TParam,
+                          /*EllpsisLoc=*/SourceLocation()))
+    // Just produce a requirement with no type requirements.
+    return new (Context) ExprRequirement(*this, E, /*IsSimple=*/false,
+      NoexceptLoc, ExprRequirement::ReturnTypeRequirement());
+
+  auto *TPL = TemplateParameterList::Create(Context, SourceLocation(),
+                                            SourceLocation(),
+                                            ArrayRef<NamedDecl *>(TParam),
+                                            SourceLocation(),
+                                            /*RequiresClause=*/nullptr);
+
+  return new (Context) ExprRequirement(*this, E, /*IsSimple=*/false,
+      NoexceptLoc, ExprRequirement::ReturnTypeRequirement(Context, TPL));
+}
+
+Requirement *Sema::ActOnNestedRequirement(Expr *Constraint) {
+  return new (Context) NestedRequirement(*this, Constraint);
+}
+
+RequiresExprBodyDecl *
+Sema::ActOnEnterRequiresExpr(SourceLocation RequiresKWLoc,
+                             ArrayRef<ParmVarDecl *> LocalParameters,
+                             Scope *BodyScope) {
+  assert(BodyScope);
+
+  RequiresExprBodyDecl *Body = RequiresExprBodyDecl::Create(Context, CurContext,
+                                                            RequiresKWLoc);
+
+  // Maintain an efficient lookup of params we have seen so far.
+  llvm::SmallSet<const IdentifierInfo*, 16> ParamsSoFar;
+
+  PushDeclContext(BodyScope, Body);
+
+  for (ParmVarDecl *Param : LocalParameters) {
+    if (Param->hasDefaultArg())
+      // C++2a [expr.prim.req] p4
+      //     [...] A local parameter of a requires-expression shall not have a
+      //     default argument. [...]
+      Diag(Param->getDefaultArgRange().getBegin(),
+           diag::err_requires_expr_local_parameter_default_argument);
+    // Ignore default argument and move on
+
+    Param->setDeclContext(Body);
+    // If this has an identifier, add it to the scope stack.
+    if (Param->getIdentifier()) {
+      CheckShadow(BodyScope, Param);
+
+      PushOnScopeChains(Param, BodyScope);
+
+      // Verify that the argument identifier has not already been mentioned.
+      if (!ParamsSoFar.insert(Param->getIdentifier()).second)
+        Diag(Param->getBeginLoc(), diag::err_param_redefinition)
+            << Param->getIdentifier();
+    }
+  }
+  return Body;
+}
+
+void Sema::ActOnExitRequiresExpr() {
+  assert(CurContext && "DeclContext imbalance!");
+  CurContext = CurContext->getLexicalParent();
+  assert(CurContext && "Popped translation unit!");
+}
+
+ExprResult
+Sema::CreateRequiresExpr(SourceLocation RequiresKWLoc,
+                         RequiresExprBodyDecl *Body,
+                         ArrayRef<ParmVarDecl *> LocalParameters,
+                         ArrayRef<Requirement *> Requirements,
+                         SourceLocation ClosingBraceLoc) {
+  return RequiresExpr::Create(Context, RequiresKWLoc, Body, LocalParameters,
+                              Requirements, ClosingBraceLoc);
+}

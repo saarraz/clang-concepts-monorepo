@@ -1765,7 +1765,7 @@ bool Parser::TryKeywordIdentFallback(bool DisableKeyword) {
 ///
 /// Note that this routine emits an error if you call it with ::new or ::delete
 /// as the current tokens, so only call it in contexts where these are invalid.
-bool Parser::TryAnnotateTypeOrScopeToken() {
+bool Parser::TryAnnotateTypeOrScopeToken(bool ClassTemplateDeductionContext) {
   assert((Tok.is(tok::identifier) || Tok.is(tok::coloncolon) ||
           Tok.is(tok::kw_typename) || Tok.is(tok::annot_cxxscope) ||
           Tok.is(tok::kw_decltype) || Tok.is(tok::annot_template_id) ||
@@ -1782,7 +1782,7 @@ bool Parser::TryAnnotateTypeOrScopeToken() {
     if (getLangOpts().MSVCCompat && NextToken().is(tok::kw_typedef)) {
       Token TypedefToken;
       PP.Lex(TypedefToken);
-      bool Result = TryAnnotateTypeOrScopeToken();
+      bool Result = TryAnnotateTypeOrScopeToken(ClassTemplateDeductionContext);
       PP.EnterToken(Tok, /*IsReinject=*/true);
       Tok = TypedefToken;
       if (!Result)
@@ -1807,7 +1807,8 @@ bool Parser::TryAnnotateTypeOrScopeToken() {
           Tok.is(tok::annot_decltype)) {
         // Attempt to recover by skipping the invalid 'typename'
         if (Tok.is(tok::annot_decltype) ||
-            (!TryAnnotateTypeOrScopeToken() && Tok.isAnnotation())) {
+            (!TryAnnotateTypeOrScopeToken(ClassTemplateDeductionContext) &&
+             Tok.isAnnotation())) {
           unsigned DiagID = diag::err_expected_qualified_after_typename;
           // MS compatibility: MSVC permits using known types with typename.
           // e.g. "typedef typename T* pointer_type"
@@ -1874,14 +1875,15 @@ bool Parser::TryAnnotateTypeOrScopeToken() {
     if (ParseOptionalCXXScopeSpecifier(SS, nullptr, /*EnteringContext*/false))
       return true;
 
-  return TryAnnotateTypeOrScopeTokenAfterScopeSpec(SS, !WasScopeAnnotation);
+  return TryAnnotateTypeOrScopeTokenAfterScopeSpec(
+      SS, !WasScopeAnnotation, ClassTemplateDeductionContext);
 }
 
 /// Try to annotate a type or scope token, having already parsed an
 /// optional scope specifier. \p IsNewScope should be \c true unless the scope
 /// specifier was extracted from an existing tok::annot_cxxscope annotation.
-bool Parser::TryAnnotateTypeOrScopeTokenAfterScopeSpec(CXXScopeSpec &SS,
-                                                       bool IsNewScope) {
+bool Parser::TryAnnotateTypeOrScopeTokenAfterScopeSpec(
+    CXXScopeSpec &SS, bool IsNewScope, bool ClassTemplateDeductionContext) {
   if (Tok.is(tok::identifier)) {
     // Determine whether the identifier is a type name.
     if (ParsedType Ty = Actions.getTypeName(
@@ -1889,7 +1891,7 @@ bool Parser::TryAnnotateTypeOrScopeTokenAfterScopeSpec(CXXScopeSpec &SS,
             false, NextToken().is(tok::period), nullptr,
             /*IsCtorOrDtorName=*/false,
             /*NonTrivialTypeSourceInfo*/true,
-            /*IsClassTemplateDeductionContext*/true)) {
+            ClassTemplateDeductionContext)) {
       SourceLocation BeginLoc = Tok.getLocation();
       if (SS.isNotEmpty()) // it was a C++ qualified type name.
         BeginLoc = SS.getBeginLoc();
