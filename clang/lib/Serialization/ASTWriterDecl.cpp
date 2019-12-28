@@ -1649,7 +1649,8 @@ void ASTDeclWriter::VisitTemplateTypeParmDecl(TemplateTypeParmDecl *D) {
     Record.AddNestedNameSpecifierLoc(TC->getNestedNameSpecifierLoc());
     Record.AddDeclarationNameInfo(TC->getConceptNameInfo());
     Record.AddDeclRef(TC->getNamedConcept());
-    Record.AddASTTemplateArgumentListInfo(TC->getTemplateArgsAsWritten());
+    if (TC->getTemplateArgsAsWritten())
+      Record.AddASTTemplateArgumentListInfo(TC->getTemplateArgsAsWritten());
     Record.AddStmt(TC->getImmediatelyDeclaredConstraint());
     Record.push_back(D->isExpandedParameterPack());
     if (D->isExpandedParameterPack())
