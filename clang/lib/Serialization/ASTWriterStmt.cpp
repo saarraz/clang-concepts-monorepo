@@ -431,7 +431,8 @@ void ASTStmtWriter::VisitConceptSpecializationExpr(
   Record.AddASTTemplateArgumentListInfo(E->getTemplateArgsAsWritten());
   for (const TemplateArgument &Arg : TemplateArgs)
     Record.AddTemplateArgument(Arg);
-  addConstraintSatisfaction(Record, E->getSatisfaction());
+  if (!E->isValueDependent())
+    addConstraintSatisfaction(Record, E->getSatisfaction());
 
   Code = serialization::EXPR_CONCEPT_SPECIALIZATION;
 }
@@ -473,7 +474,7 @@ void ASTStmtWriter::VisitRequiresExpr(RequiresExpr *E) {
               RetReq.getTypeConstraintTemplateParameterList());
           if (ExprReq->Status >= ExprRequirement::SS_ConstraintsNotSatisfied)
             Record.AddStmt(
-                RetReq.getTypeConstraintSubstitutedConstraintExpr());
+                ExprReq->getReturnTypeRequirementSubstitutedConstraintExpr());
         } else {
           assert(RetReq.isEmpty());
           Record.push_back(0);
@@ -482,10 +483,10 @@ void ASTStmtWriter::VisitRequiresExpr(RequiresExpr *E) {
     } else {
       auto *NestedReq = cast<NestedRequirement>(R);
       Record.push_back(Requirement::RK_Nested);
-
-      if (auto *SubstDiag =
-            NestedReq->Value.dyn_cast<Requirement::SubstitutionDiagnostic *>()){
-        addSubstitutionDiagnostic(Record, SubstDiag);
+      Record.push_back(NestedReq->isSubstitutionFailure());
+      if (NestedReq->isSubstitutionFailure()){
+        addSubstitutionDiagnostic(Record,
+                                  NestedReq->getSubstitutionDiagnostic());
       } else {
         Record.AddStmt(NestedReq->Value.get<Expr *>());
         if (!NestedReq->isDependent())

@@ -3101,35 +3101,35 @@ public:
 
   TypeRequirement *
   RebuildTypeRequirement(Requirement::SubstitutionDiagnostic *SubstDiag) {
-    return new (SemaRef.Context) TypeRequirement(SubstDiag);
+    return SemaRef.BuildTypeRequirement(SubstDiag);
   }
 
   TypeRequirement *RebuildTypeRequirement(TypeSourceInfo *T) {
-    return new (SemaRef.Context) TypeRequirement(T);
+    return SemaRef.BuildTypeRequirement(T);
   }
 
   ExprRequirement *
   RebuildExprRequirement(Requirement::SubstitutionDiagnostic *SubstDiag,
                          bool IsSimple, SourceLocation NoexceptLoc,
                          ExprRequirement::ReturnTypeRequirement Ret) {
-    return new (SemaRef.Context) ExprRequirement(SubstDiag, IsSimple,
-                                                 NoexceptLoc, std::move(Ret));
+    return SemaRef.BuildExprRequirement(SubstDiag, IsSimple, NoexceptLoc,
+                                        std::move(Ret));
   }
 
   ExprRequirement *
   RebuildExprRequirement(Expr *E, bool IsSimple, SourceLocation NoexceptLoc,
                          ExprRequirement::ReturnTypeRequirement Ret) {
-    return new (SemaRef.Context) ExprRequirement(SemaRef, E, IsSimple,
-                                                 NoexceptLoc, std::move(Ret));
+    return SemaRef.BuildExprRequirement(E, IsSimple, NoexceptLoc,
+                                        std::move(Ret));
   }
 
   NestedRequirement *
   RebuildNestedRequirement(Requirement::SubstitutionDiagnostic *SubstDiag) {
-    return new (SemaRef.Context) NestedRequirement(SubstDiag);
+    return SemaRef.BuildNestedRequirement(SubstDiag);
   }
 
   NestedRequirement *RebuildNestedRequirement(Expr *Constraint) {
-    return new (SemaRef.Context) NestedRequirement(SemaRef, Constraint);
+    return SemaRef.BuildNestedRequirement(Constraint);
   }
 
   /// \brief Build a new Objective-C boxed expression.

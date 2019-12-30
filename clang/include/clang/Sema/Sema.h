@@ -7300,11 +7300,24 @@ public:
                                     QualType Type);
   Requirement *ActOnCompoundRequirement(Expr *E, SourceLocation NoexceptLoc);
   Requirement *ActOnCompoundRequirement(Expr *E, SourceLocation NoexceptLoc,
-                                        TypeSourceInfo *ExpectedType);
-  Requirement *ActOnCompoundRequirement(Expr *E, SourceLocation NoexceptLoc,
                                         TemplateIdAnnotation *TypeConstraint,
                                         unsigned Depth);
   Requirement *ActOnNestedRequirement(Expr *Constraint);
+  ExprRequirement *
+  BuildExprRequirement(
+      Expr *E, bool IsSatisfied, SourceLocation NoexceptLoc,
+      ExprRequirement::ReturnTypeRequirement ReturnTypeRequirement);
+  ExprRequirement *
+  BuildExprRequirement(
+      Requirement::SubstitutionDiagnostic *ExprSubstDiag, bool IsSatisfied,
+      SourceLocation NoexceptLoc,
+      ExprRequirement::ReturnTypeRequirement ReturnTypeRequirement);
+  TypeRequirement *BuildTypeRequirement(TypeSourceInfo *Type);
+  TypeRequirement *
+  BuildTypeRequirement(Requirement::SubstitutionDiagnostic *SubstDiag);
+  NestedRequirement *BuildNestedRequirement(Expr *E);
+  NestedRequirement *
+  BuildNestedRequirement(Requirement::SubstitutionDiagnostic *SubstDiag);
   ExprResult CreateRequiresExpr(SourceLocation RequiresKWLoc,
                                 RequiresExprBodyDecl *Body,
                                 ArrayRef<ParmVarDecl *> LocalParameters,

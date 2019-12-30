@@ -760,7 +760,7 @@ void ASTStmtReader::VisitConceptSpecializationExpr(
   for (unsigned I = 0; I < NumTemplateArgs; ++I)
     Args.push_back(Record.readTemplateArgument());
   E->setTemplateArguments(ArgsAsWritten, Args);
-  E->Satisfaction =
+  E->Satisfaction = E->isValueDependent() ? nullptr :
       ASTConstraintSatisfaction::Create(Record.getContext(),
                                         readConstraintSatisfaction(Record));
 }
@@ -804,7 +804,7 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
       case Requirement::RK_Simple:
       case Requirement::RK_Compound: {
         auto Status =
-            static_cast<ExprRequirement::SatisfactionStatus >(Record.readInt());
+            static_cast<ExprRequirement::SatisfactionStatus>(Record.readInt());
         llvm::PointerUnion<Requirement::SubstitutionDiagnostic *,
                            Expr *> E;
         if (Status == ExprRequirement::SS_ExprSubstitutionFailure) {
@@ -813,6 +813,7 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
           E = Record.readExpr();
 
         llvm::Optional<ExprRequirement::ReturnTypeRequirement> Req;
+        ConceptSpecializationExpr *SubstitutedConstraintExpr = nullptr;
         SourceLocation NoexceptLoc;
         if (RK == Requirement::RK_Simple) {
           Req.emplace();
@@ -826,28 +827,25 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
             case 1: {
               // type-constraint
               TemplateParameterList *TPL = Record.readTemplateParameterList();
-              ConceptSpecializationExpr *CSE = nullptr;
               if (Status >= ExprRequirement::SS_ConstraintsNotSatisfied)
-                CSE = cast<ConceptSpecializationExpr>(Record.readExpr());
-              if (CSE)
-                Req.emplace(Record.getContext(), TPL, CSE);
+                SubstitutedConstraintExpr =
+                    cast<ConceptSpecializationExpr>(Record.readExpr());
+              Req.emplace(Record.getContext(), TPL);
             } break;
-            case 2: {
+            case 2:
               // Substitution failure
               Req.emplace(readSubstitutionDiagnostic(Record));
-            } break;
+              break;
           }
         }
-        if (Req) {
-          if (Expr *Ex = E.dyn_cast<Expr *>())
-            R = new (Record.getContext()) ExprRequirement(Ex,
-                    RK == Requirement::RK_Simple, NoexceptLoc, std::move(*Req),
-                    Status);
-          else
-            R = new (Record.getContext()) ExprRequirement(
-                    E.get<Requirement::SubstitutionDiagnostic *>(),
-                    RK == Requirement::RK_Simple, NoexceptLoc, std::move(*Req));
-        }
+        if (Expr *Ex = E.dyn_cast<Expr *>())
+          R = new (Record.getContext()) ExprRequirement(
+                  Ex, RK == Requirement::RK_Simple, NoexceptLoc,
+                  std::move(*Req), Status, SubstitutedConstraintExpr);
+        else
+          R = new (Record.getContext()) ExprRequirement(
+                  E.get<Requirement::SubstitutionDiagnostic *>(),
+                  RK == Requirement::RK_Simple, NoexceptLoc, std::move(*Req));
       } break;
       case Requirement::RK_Nested: {
         if (bool IsSubstitutionDiagnostic = Record.readInt()) {

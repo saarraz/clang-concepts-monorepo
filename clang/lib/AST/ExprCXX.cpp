@@ -1845,6 +1845,15 @@ ConceptSpecializationExpr::Create(ASTContext &C, EmptyShell Empty,
   return new (Buffer) ConceptSpecializationExpr(Empty, NumTemplateArgs);
 }
 
+const TypeConstraint *
+ExprRequirement::ReturnTypeRequirement::getTypeConstraint() const {
+  assert(isTypeConstraint());
+  auto TPL =
+      TypeConstraintInfo.getPointer().get<TemplateParameterList *>();
+  return cast<TemplateTypeParmDecl>(TPL->getParam(0))
+      ->getTypeConstraint();
+}
+
 RequiresExpr::RequiresExpr(ASTContext &C, SourceLocation RequiresKWLoc,
                            RequiresExprBodyDecl *Body,
                            ArrayRef<ParmVarDecl *> LocalParameters,

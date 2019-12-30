@@ -100,6 +100,6 @@ def OMPThreadPrivate : DeclNode<Decl>;
 def OMPAllocate : DeclNode<Decl>;
 def OMPRequires : DeclNode<Decl>;
 def Empty : DeclNode<Decl>;
-def LifetimeExtendedTemporary : DeclNode<Decl>;
 def RequiresExprBody : DeclNode<Decl>, DeclContext;
+def LifetimeExtendedTemporary : DeclNode<Decl>;
 

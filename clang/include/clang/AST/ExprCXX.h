@@ -14,7 +14,6 @@
 #ifndef LLVM_CLANG_AST_EXPRCXX_H
 #define LLVM_CLANG_AST_EXPRCXX_H
 
-#include "clang/Sema/SemaConcept.h"
 #include "clang/AST/ASTConcept.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclBase.h"
@@ -4928,6 +4927,313 @@ public:
   }
   const_child_range children() const {
     return const_child_range(const_child_iterator(), const_child_iterator());
+  }
+};
+
+
+/// \brief A static requirement that can be used in a requires-expression to
+/// check properties of types and expression.
+class Requirement {
+public:
+  // Note - simple and compound requirements are both represented by the same
+  // class (ExprRequirement).
+  enum RequirementKind { RK_Type, RK_Simple, RK_Compound, RK_Nested };
+private:
+  const RequirementKind Kind;
+  bool Dependent : 1;
+  bool ContainsUnexpandedParameterPack : 1;
+  bool Satisfied : 1;
+public:
+  struct SubstitutionDiagnostic {
+    StringRef SubstitutedEntity;
+    SourceLocation DiagLoc;
+    StringRef DiagMessage;
+  };
+
+  Requirement(RequirementKind Kind, bool IsDependent,
+              bool ContainsUnexpandedParameterPack, bool IsSatisfied = true) :
+      Kind(Kind), Dependent(IsDependent),
+      ContainsUnexpandedParameterPack(ContainsUnexpandedParameterPack),
+      Satisfied(IsSatisfied) {}
+
+  RequirementKind getKind() const { return Kind; }
+
+  bool isSatisfied() const {
+    assert(!Dependent &&
+           "isSatisfied can only be called on non-dependent requirements.");
+    return Satisfied;
+  }
+
+  void setSatisfied(bool IsSatisfied) {
+    assert(!Dependent &&
+           "setSatisfied can only be called on non-dependent requirements.");
+    Satisfied = IsSatisfied;
+  }
+
+  void setDependent(bool IsDependent) { Dependent = IsDependent; }
+  bool isDependent() const { return Dependent; }
+
+  void setContainsUnexpandedParameterPack(bool Contains) {
+    ContainsUnexpandedParameterPack = Contains;
+  }
+  bool containsUnexpandedParameterPack() const {
+    return ContainsUnexpandedParameterPack;
+  }
+};
+
+/// \brief A requires-expression requirement which queries the existence of a
+/// type name or type template specialization ('type' requirements).
+class TypeRequirement : public Requirement {
+public:
+  enum SatisfactionStatus {
+      SS_Dependent,
+      SS_SubstitutionFailure,
+      SS_Satisfied
+  };
+private:
+  llvm::PointerUnion<SubstitutionDiagnostic *, TypeSourceInfo *> Value;
+  SatisfactionStatus Status;
+public:
+  friend class ASTStmtReader;
+  friend class ASTStmtWriter;
+
+  /// \brief Construct a type requirement from a type. If the given type is not
+  /// dependent, this indicates that the type exists and the requirement will be
+  /// satisfied. Otherwise, the SubstitutionDiagnostic constructor is to be
+  /// used.
+  TypeRequirement(TypeSourceInfo *T);
+
+  /// \brief Construct a type requirement when the nested name specifier is
+  /// invalid due to a bad substitution. The requirement is unsatisfied.
+  TypeRequirement(SubstitutionDiagnostic *Diagnostic) :
+      Requirement(RK_Type, false, false, false), Value(Diagnostic),
+      Status(SS_SubstitutionFailure) {}
+
+  SatisfactionStatus getSatisfactionStatus() const { return Status; }
+  void setSatisfactionStatus(SatisfactionStatus Status) {
+    this->Status = Status;
+  }
+
+  bool isSubstitutionFailure() const {
+    return Status == SS_SubstitutionFailure;
+  }
+  SubstitutionDiagnostic *getSubstitutionDiagnostic() const {
+    assert(Status == SS_SubstitutionFailure &&
+           "Attempted to get substitution diagnostic when there has been no "
+           "substitution failure.");
+    return Value.get<SubstitutionDiagnostic *>();
+  }
+
+  TypeSourceInfo *getType() const {
+    assert(!isSubstitutionFailure() &&
+           "Attempted to get type when there has been a substitution failure.");
+    return Value.get<TypeSourceInfo *>();
+  }
+
+  static bool classof(const Requirement *R) {
+    return R->getKind() == RK_Type;
+  }
+};
+
+/// \brief A requires-expression requirement which queries the validity and
+/// properties of an expression ('simple' and 'compound' requirements).
+class ExprRequirement : public Requirement {
+public:
+  enum SatisfactionStatus {
+      SS_Dependent,
+      SS_ExprSubstitutionFailure,
+      SS_NoexceptNotMet,
+      SS_TypeRequirementSubstitutionFailure,
+      SS_ConstraintsNotSatisfied,
+      SS_Satisfied
+  };
+  class ReturnTypeRequirement {
+      llvm::PointerIntPair<
+          llvm::PointerUnion<TemplateParameterList *, SubstitutionDiagnostic *>,
+          2, int>
+          TypeConstraintInfo;
+  public:
+      friend class ASTStmtReader;
+      friend class ASTStmtWriter;
+
+      /// \brief No return type requirement was specified.
+      ReturnTypeRequirement() : TypeConstraintInfo(nullptr, 0) {}
+
+      /// \brief A return type requirement was specified but it was a
+      /// substitution failure.
+      ReturnTypeRequirement(SubstitutionDiagnostic *SubstDiag) :
+          TypeConstraintInfo(SubstDiag, 0) {}
+
+      /// \brief A 'type constraint' style return type requirement.
+      /// \param TPL an invented template parameter list containing a single
+      /// type parameter with a type-constraint.
+      ReturnTypeRequirement(TemplateParameterList *TPL);
+
+      bool isDependent() const {
+        return TypeConstraintInfo.getInt() & 1;
+      }
+
+      bool containsUnexpandedParameterPack() const {
+        return TypeConstraintInfo.getInt() & 2;
+      }
+
+      bool isEmpty() const {
+        return TypeConstraintInfo.getPointer().isNull();
+      }
+
+      bool isSubstitutionFailure() const {
+        return !isEmpty() &&
+            TypeConstraintInfo.getPointer().is<SubstitutionDiagnostic *>();
+      }
+
+      bool isTypeConstraint() const {
+        return !isEmpty() &&
+            TypeConstraintInfo.getPointer().is<TemplateParameterList *>();
+      }
+
+      SubstitutionDiagnostic *getSubstitutionDiagnostic() const {
+        assert(isSubstitutionFailure());
+        return TypeConstraintInfo.getPointer().get<SubstitutionDiagnostic *>();
+      }
+
+      const TypeConstraint *getTypeConstraint() const;
+
+      TemplateParameterList *getTypeConstraintTemplateParameterList() const {
+        assert(isTypeConstraint());
+        return TypeConstraintInfo.getPointer().get<TemplateParameterList *>();
+      }
+  };
+private:
+  llvm::PointerUnion<Expr *, SubstitutionDiagnostic *> Value;
+  SourceLocation NoexceptLoc; // May be empty if noexcept wasn't specified.
+  ReturnTypeRequirement TypeReq;
+  ConceptSpecializationExpr *SubstitutedConstraintExpr;
+  SatisfactionStatus Status;
+public:
+  friend class ASTStmtReader;
+  friend class ASTStmtWriter;
+
+  /// \brief Construct a compound requirement.
+  /// \param E the expression which is checked by this requirement.
+  /// \param IsSimple whether this was a simple requirement in source.
+  /// \param NoexceptLoc the location of the noexcept keyword, if it was
+  /// specified, otherwise an empty location.
+  /// \param Req the requirement for the type of the checked expression.
+  /// \param Status the satisfaction status of this requirement.
+  ExprRequirement(
+      Expr *E, bool IsSimple, SourceLocation NoexceptLoc,
+      ReturnTypeRequirement Req, SatisfactionStatus Status,
+      ConceptSpecializationExpr *SubstitutedConstraintExpr = nullptr);
+
+  /// \brief Construct a compound requirement whose expression was a
+  /// substitution failure. The requirement is not satisfied.
+  /// \param E the diagnostic emitted while instantiating the original
+  /// expression.
+  /// \param IsSimple whether this was a simple requirement in source.
+  /// \param NoexceptLoc the location of the noexcept keyword, if it was
+  /// specified, otherwise an empty location.
+  /// \param Req the requirement for the type of the checked expression (omit
+  /// if no requirement was specified).
+  ExprRequirement(SubstitutionDiagnostic *E, bool IsSimple,
+                  SourceLocation NoexceptLoc, ReturnTypeRequirement Req = {});
+
+  bool isSimple() const { return getKind() == RK_Simple; }
+  bool isCompound() const { return getKind() == RK_Compound; }
+
+  bool hasNoexceptRequirement() const { return NoexceptLoc.isValid(); }
+  SourceLocation getNoexceptLoc() const { return NoexceptLoc; }
+
+  SatisfactionStatus getSatisfactionStatus() const { return Status; }
+
+  bool isExprSubstitutionFailure() const {
+    return Status == SS_ExprSubstitutionFailure;
+  }
+
+  const ReturnTypeRequirement &getReturnTypeRequirement() const {
+    return TypeReq;
+  }
+
+  ConceptSpecializationExpr *
+  getReturnTypeRequirementSubstitutedConstraintExpr() const {
+    assert(Status >= SS_TypeRequirementSubstitutionFailure);
+    return SubstitutedConstraintExpr;
+  }
+
+  SubstitutionDiagnostic *getExprSubstitutionDiagnostic() const {
+    assert(isExprSubstitutionFailure() &&
+           "Attempted to get expression substitution diagnostic when there has "
+           "been no expression substitution failure");
+    return Value.get<SubstitutionDiagnostic *>();
+  }
+
+  Expr *getExpr() const {
+    assert(!isExprSubstitutionFailure() &&
+           "ExprRequirement has no expression because there has been a "
+           "substitution failure.");
+    return Value.get<Expr *>();
+  }
+
+  static bool classof(const Requirement *R) {
+    return R->getKind() == RK_Compound || R->getKind() == RK_Simple;
+  }
+};
+
+/// \brief A requires-expression requirement which is satisfied when a general
+/// constraint expression is satisfied ('nested' requirements).
+class NestedRequirement : public Requirement {
+  llvm::PointerUnion<Expr *, SubstitutionDiagnostic *> Value;
+  const ASTConstraintSatisfaction *Satisfaction = nullptr;
+
+public:
+  friend class ASTStmtReader;
+  friend class ASTStmtWriter;
+
+  NestedRequirement(SubstitutionDiagnostic *SubstDiag) :
+      Requirement(RK_Nested, /*Dependent=*/false,
+                  /*ContainsUnexpandedParameterPack*/false,
+                  /*Satisfied=*/false), Value(SubstDiag) {}
+
+  NestedRequirement(Expr *Constraint) :
+      Requirement(RK_Nested, /*Dependent=*/true,
+                  Constraint->containsUnexpandedParameterPack()),
+      Value(Constraint) {
+    assert(Constraint->isInstantiationDependent() &&
+           "Nested requirement with Non-dependent constraint must be "
+           "constructed with a ConstraintSatisfaction object");
+  }
+
+  NestedRequirement(ASTContext &C, Expr *Constraint,
+                    const ConstraintSatisfaction &Satisfaction) :
+      Requirement(RK_Nested, false, false, Satisfaction.IsSatisfied),
+      Value(Constraint),
+      Satisfaction(ASTConstraintSatisfaction::Create(C, Satisfaction)) {}
+
+  bool isSubstitutionFailure() const {
+    return Value.is<SubstitutionDiagnostic *>();
+  }
+  SubstitutionDiagnostic *getSubstitutionDiagnostic() const {
+    assert(isSubstitutionFailure() &&
+           "getSubstitutionDiagnostic() may not be called when there was no "
+           "substitution failure.");
+    return Value.get<SubstitutionDiagnostic *>();
+  }
+
+  Expr *getConstraintExpr() const {
+    assert(!isSubstitutionFailure() && "getConstraintExpr() may not be called "
+                                       "on nested requirements with "
+                                       "substitution failures.");
+    return Value.get<Expr *>();
+  }
+
+  const ASTConstraintSatisfaction &getConstraintSatisfaction() const {
+    assert(!isSubstitutionFailure() && "getConstraintSatisfaction() may not be "
+                                       "called on nested requirements with "
+                                       "substitution failures.");
+    return *Satisfaction;
+  }
+
+  static bool classof(const Requirement *R) {
+    return R->getKind() == RK_Nested;
   }
 };
 

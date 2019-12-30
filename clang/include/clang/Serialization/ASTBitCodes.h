@@ -1361,9 +1361,6 @@ namespace serialization {
       /// \brief A ConceptDecl record.
       DECL_CONCEPT,
 
-      /// \brief A RequiresExprBodyDecl record.
-      DECL_REQUIRES_EXPR_BODY,
-
       /// \brief A StaticAssertDecl record.
       DECL_STATIC_ASSERT,
 
@@ -1405,6 +1402,9 @@ namespace serialization {
 
       /// An LifetimeExtendedTemporaryDecl record.
       DECL_LIFETIME_EXTENDED_TEMPORARY,
+
+      /// A RequiresExprBodyDecl record.
+      DECL_REQUIRES_EXPR_BODY,
 
       /// An ObjCTypeParamDecl record.
       DECL_OBJC_TYPE_PARAM,

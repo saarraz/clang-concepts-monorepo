@@ -11,6 +11,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "clang/Sema/Template.h"
 #include "clang/Sema/SemaInternal.h"
 #include "TreeTransform.h"
 #include "TypeLocBuilder.h"
@@ -8113,22 +8114,23 @@ Sema::CheckMicrosoftIfExistsSymbol(Scope *S, SourceLocation KeywordLoc,
 }
 
 Requirement *Sema::ActOnSimpleRequirement(Expr *E) {
-  return new (Context) ExprRequirement(*this, E, /*IsSimple=*/true,
-             /*NoexceptLoc=*/SourceLocation());
+  return BuildExprRequirement(E, /*IsSimple=*/true,
+                              /*NoexceptLoc=*/SourceLocation(),
+                              /*ReturnTypeRequirement=*/{});
 }
 
 Requirement *Sema::ActOnTypeRequirement(SourceLocation TypenameKWLoc,
                                         QualType Type) {
   auto *LIT = dyn_cast<LocInfoType>(Type.getTypePtr());
-  return new (Context) TypeRequirement(
+  return BuildTypeRequirement(
       LIT ? LIT->getTypeSourceInfo() :
       Context.getTrivialTypeSourceInfo(Type, TypenameKWLoc));
 }
 
 Requirement *Sema::ActOnCompoundRequirement(Expr *E,
                                             SourceLocation NoexceptLoc) {
-  return new (Context) ExprRequirement(*this, E, /*IsSimple=*/false,
-                                       NoexceptLoc);
+  return BuildExprRequirement(E, /*IsSimple=*/false, NoexceptLoc,
+                              /*ReturnTypeRequirement=*/{});
 }
 
 Requirement *
@@ -8158,21 +8160,97 @@ Sema::ActOnCompoundRequirement(Expr *E, SourceLocation NoexceptLoc,
   if (ActOnTypeConstraint(TypeConstraint, TParam,
                           /*EllpsisLoc=*/SourceLocation()))
     // Just produce a requirement with no type requirements.
-    return new (Context) ExprRequirement(*this, E, /*IsSimple=*/false,
-      NoexceptLoc, ExprRequirement::ReturnTypeRequirement());
+    return BuildExprRequirement(E, /*IsSimple=*/false, NoexceptLoc, {});
 
   auto *TPL = TemplateParameterList::Create(Context, SourceLocation(),
                                             SourceLocation(),
                                             ArrayRef<NamedDecl *>(TParam),
                                             SourceLocation(),
                                             /*RequiresClause=*/nullptr);
+  return BuildExprRequirement(E, /*IsSimple=*/false, NoexceptLoc,
+                              ExprRequirement::ReturnTypeRequirement(TPL));
+}
 
-  return new (Context) ExprRequirement(*this, E, /*IsSimple=*/false,
-      NoexceptLoc, ExprRequirement::ReturnTypeRequirement(Context, TPL));
+ExprRequirement *
+Sema::BuildExprRequirement(
+    Expr *E, bool IsSimple, SourceLocation NoexceptLoc,
+    ExprRequirement::ReturnTypeRequirement ReturnTypeRequirement) {
+  ExprRequirement::SatisfactionStatus Status = ExprRequirement::SS_Satisfied;
+  ConceptSpecializationExpr *SubstitutedConstraintExpr = nullptr;
+  if (E->isInstantiationDependent() || ReturnTypeRequirement.isDependent())
+    Status = ExprRequirement::SS_Dependent;
+  else if (NoexceptLoc.isValid() && canThrow(E) == CanThrowResult::CT_Can)
+    Status = ExprRequirement::SS_NoexceptNotMet;
+  else if (ReturnTypeRequirement.isSubstitutionFailure())
+    Status = ExprRequirement::SS_TypeRequirementSubstitutionFailure;
+  else if (ReturnTypeRequirement.isTypeConstraint()) {
+    // C++2a [expr.prim.req]p1.3.3
+    //     The immediately-declared constraint ([temp]) of decltype((E)) shall
+    //     be satisfied.
+    TemplateParameterList *TPL =
+        ReturnTypeRequirement.getTypeConstraintTemplateParameterList();
+    QualType MatchedType =
+        BuildDecltypeType(E, E->getBeginLoc()).getCanonicalType();
+    llvm::SmallVector<TemplateArgument, 1> Args;
+    Args.push_back(TemplateArgument(MatchedType));
+    TemplateArgumentList TAL(TemplateArgumentList::OnStack, Args);
+    MultiLevelTemplateArgumentList MLTAL(TAL);
+    for (unsigned I = 0; I < TPL->getDepth(); ++I)
+      MLTAL.addOuterRetainedLevel();
+    Expr *IDC =
+        cast<TemplateTypeParmDecl>(TPL->getParam(0))->getTypeConstraint()
+            ->getImmediatelyDeclaredConstraint();
+    ExprResult Constraint = SubstExpr(IDC, MLTAL);
+    assert(!Constraint.isInvalid() &&
+           "Substitution cannot fail as it is simply putting a type template "
+           "argument into a concept specialization expression's parameter.");
+
+    SubstitutedConstraintExpr =
+        cast<ConceptSpecializationExpr>(Constraint.get());
+    if (!SubstitutedConstraintExpr->isSatisfied())
+      Status = ExprRequirement::SS_ConstraintsNotSatisfied;
+  }
+  return new (Context) ExprRequirement(E, IsSimple, NoexceptLoc,
+                                       ReturnTypeRequirement, Status,
+                                       SubstitutedConstraintExpr);
+}
+
+ExprRequirement *
+Sema::BuildExprRequirement(
+    Requirement::SubstitutionDiagnostic *ExprSubstitutionDiagnostic,
+    bool IsSimple, SourceLocation NoexceptLoc,
+    ExprRequirement::ReturnTypeRequirement ReturnTypeRequirement) {
+  return new (Context) ExprRequirement(ExprSubstitutionDiagnostic, IsSimple,
+                                       NoexceptLoc, ReturnTypeRequirement);
+}
+
+TypeRequirement *
+Sema::BuildTypeRequirement(TypeSourceInfo *Type) {
+  return new (Context) TypeRequirement(Type);
+}
+
+TypeRequirement *
+Sema::BuildTypeRequirement(Requirement::SubstitutionDiagnostic *SubstDiag) {
+  return new (Context) TypeRequirement(SubstDiag);
 }
 
 Requirement *Sema::ActOnNestedRequirement(Expr *Constraint) {
-  return new (Context) NestedRequirement(*this, Constraint);
+  return BuildNestedRequirement(Constraint);
+}
+
+NestedRequirement *
+Sema::BuildNestedRequirement(Expr *Constraint) {
+  ConstraintSatisfaction Satisfaction;
+  if (!Constraint->isInstantiationDependent() &&
+      CheckConstraintSatisfaction(Constraint, Satisfaction))
+    return nullptr;
+  return new (Context) NestedRequirement(Context, Constraint,
+                                         Satisfaction);
+}
+
+NestedRequirement *
+Sema::BuildNestedRequirement(Requirement::SubstitutionDiagnostic *SubstDiag) {
+  return new (Context) NestedRequirement(SubstDiag);
 }
 
 RequiresExprBodyDecl *
