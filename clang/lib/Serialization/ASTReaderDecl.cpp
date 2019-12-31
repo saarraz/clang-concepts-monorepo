@@ -2909,19 +2909,41 @@ uint64_t ASTReader::getGlobalBitOffset(ModuleFile &M, uint32_t LocalOffset) {
   return LocalOffset + M.GlobalBitOffset;
 }
 
-static bool isSameTemplateParameterList(const TemplateParameterList *X,
+static bool isSameExpr(const ASTContext &Ctx, const Expr *A, const Expr *B) {
+  if ((A != nullptr) != (B != nullptr))
+    return false;
+  if (A) {
+    llvm::FoldingSetNodeID FirstID, SecondID;
+    A->Profile(FirstID, Ctx, /*Canonical=*/true);
+    B->Profile(SecondID, Ctx, /*Canonical=*/true);
+    if (FirstID != SecondID)
+      return false;
+  }
+  return true;
+}
+
+static bool isSameTemplateParameterList(const ASTContext &C,
+                                        const TemplateParameterList *X,
                                         const TemplateParameterList *Y);
 
 /// Determine whether two template parameters are similar enough
 /// that they may be used in declarations of the same template.
-static bool isSameTemplateParameter(const NamedDecl *X,
+static bool isSameTemplateParameter(const ASTContext &C,
+                                    const NamedDecl *X,
                                     const NamedDecl *Y) {
   if (X->getKind() != Y->getKind())
     return false;
 
   if (const auto *TX = dyn_cast<TemplateTypeParmDecl>(X)) {
     const auto *TY = cast<TemplateTypeParmDecl>(Y);
-    return TX->isParameterPack() == TY->isParameterPack();
+    if (TX->isParameterPack() != TY->isParameterPack())
+      return false;
+    auto *CX = TX->getTypeConstraint();
+    auto *CY = TY->getTypeConstraint();
+    if ((CX != nullptr) != (CY != nullptr))
+      return false;
+    return !CX || isSameExpr(C, CX->getImmediatelyDeclaredConstraint(),
+                             CY->getImmediatelyDeclaredConstraint());
   }
 
   if (const auto *TX = dyn_cast<NonTypeTemplateParmDecl>(X)) {
@@ -2933,7 +2955,8 @@ static bool isSameTemplateParameter(const NamedDecl *X,
   const auto *TX = cast<TemplateTemplateParmDecl>(X);
   const auto *TY = cast<TemplateTemplateParmDecl>(Y);
   return TX->isParameterPack() == TY->isParameterPack() &&
-         isSameTemplateParameterList(TX->getTemplateParameters(),
+         isSameTemplateParameterList(X->getASTContext(),
+                                     TX->getTemplateParameters(),
                                      TY->getTemplateParameters());
 }
 
@@ -2984,18 +3007,32 @@ static bool isSameQualifier(const NestedNameSpecifier *X,
   return !PX && !PY;
 }
 
+// Determine whether the functions have the same requires clause or not.
+static bool hasSameRequiresClause(const FunctionDecl *A, const FunctionDecl *B) {
+  return isSameExpr(A->getASTContext(), A->getTrailingRequiresClause(),
+                    B->getTrailingRequiresClause());
+}
+
+// Determine whether template lists have the same requires clause or not.
+static bool hasSameRequiresClause(const ASTContext &Ctx,
+                                  const TemplateParameterList *A,
+                                  const TemplateParameterList *B) {
+  return isSameExpr(Ctx, A->getRequiresClause(), B->getRequiresClause());
+}
+
 /// Determine whether two template parameter lists are similar enough
 /// that they may be used in declarations of the same template.
-static bool isSameTemplateParameterList(const TemplateParameterList *X,
+static bool isSameTemplateParameterList(const ASTContext &C,
+                                        const TemplateParameterList *X,
                                         const TemplateParameterList *Y) {
   if (X->size() != Y->size())
     return false;
 
   for (unsigned I = 0, N = X->size(); I != N; ++I)
-    if (!isSameTemplateParameter(X->getParam(I), Y->getParam(I)))
+    if (!isSameTemplateParameter(C, X->getParam(I), Y->getParam(I)))
       return false;
 
-  return true;
+  return hasSameRequiresClause(C, X, Y);
 }
 
 /// Determine whether the attributes we can overload on are identical for A and
@@ -3130,7 +3167,8 @@ static bool isSameEntity(NamedDecl *X, NamedDecl *Y) {
       return false;
     }
     return FuncX->getLinkageInternal() == FuncY->getLinkageInternal() &&
-           hasSameOverloadableAttrs(FuncX, FuncY);
+           hasSameOverloadableAttrs(FuncX, FuncY) &&
+           hasSameRequiresClause(FuncX, FuncY);
   }
 
   // Variables with the same type and linkage match.
@@ -3168,7 +3206,8 @@ static bool isSameEntity(NamedDecl *X, NamedDecl *Y) {
     const auto *TemplateY = cast<TemplateDecl>(Y);
     return isSameEntity(TemplateX->getTemplatedDecl(),
                         TemplateY->getTemplatedDecl()) &&
-           isSameTemplateParameterList(TemplateX->getTemplateParameters(),
+           isSameTemplateParameterList(TemplateX->getASTContext(),
+                                       TemplateX->getTemplateParameters(),
                                        TemplateY->getTemplateParameters());
   }
 
