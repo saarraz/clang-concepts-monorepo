@@ -1923,6 +1923,7 @@ struct ConvertConstructorToDeductionGuideTransform {
     //       template followed by the template parameters (including default
     //       template arguments) of the constructor, if any.
     TemplateParameterList *TemplateParams = Template->getTemplateParameters();
+    MultiLevelTemplateArgumentList NewArgs;
     if (FTD) {
       TemplateParameterList *InnerParams = FTD->getTemplateParameters();
       SmallVector<NamedDecl *, 16> AllParams;
@@ -1944,19 +1945,17 @@ struct ConvertConstructorToDeductionGuideTransform {
         SubstArgs.push_back(SemaRef.Context.getCanonicalTemplateArgument(
             SemaRef.Context.getInjectedTemplateArg(NewParam)));
       }
+
+      // If we built a new template-parameter-list, track that we need to
+      // substitute references to the old parameters into references to the
+      // new ones.
+      NewArgs.addOuterTemplateArguments(SubstArgs);
+      NewArgs.addOuterRetainedLevel();
+
       TemplateParams = TemplateParameterList::Create(
           SemaRef.Context, InnerParams->getTemplateLoc(),
           InnerParams->getLAngleLoc(), AllParams, InnerParams->getRAngleLoc(),
-          /*FIXME: RequiresClause*/ nullptr);
-    }
-
-    // If we built a new template-parameter-list, track that we need to
-    // substitute references to the old parameters into references to the
-    // new ones.
-    MultiLevelTemplateArgumentList Args;
-    if (FTD) {
-      Args.addOuterTemplateArguments(SubstArgs);
-      Args.addOuterRetainedLevel();
+          transformExpr(InnerParams->getRequiresClause(), NewArgs));
     }
 
     FunctionProtoTypeLoc FPTL = CD->getTypeSourceInfo()->getTypeLoc()
@@ -1968,14 +1967,17 @@ struct ConvertConstructorToDeductionGuideTransform {
     // new ones.
     TypeLocBuilder TLB;
     SmallVector<ParmVarDecl*, 8> Params;
-    QualType NewType = transformFunctionProtoType(TLB, FPTL, Params, Args);
+    QualType NewType = transformFunctionProtoType(TLB, FPTL, Params, NewArgs);
     if (NewType.isNull())
       return nullptr;
     TypeSourceInfo *NewTInfo = TLB.getTypeSourceInfo(SemaRef.Context, NewType);
 
+    // Transform the trailing requires clause, if any
+    Expr *TrailingConstraint = transformExpr(CD->getTrailingRequiresClause(), NewArgs);
+
     return buildDeductionGuide(TemplateParams, CD->getExplicitSpecifier(),
                                NewTInfo, CD->getBeginLoc(), CD->getLocation(),
-                               CD->getEndLoc());
+                               CD->getEndLoc(), TrailingConstraint);
   }
 
   /// Build a deduction guide with the specified parameter types.
@@ -2026,17 +2028,30 @@ private:
       if (const auto *TC = TTP->getTypeConstraint()) {
         TemplateArgumentListInfo TransformedArgs;
         const auto *ArgsAsWritten = TC->getTemplateArgsAsWritten();
-        if (SemaRef.Subst(ArgsAsWritten->getTemplateArgs(),
-                          ArgsAsWritten->NumTemplateArgs, TransformedArgs,
-                          Args)) {
+        if (!ArgsAsWritten || SemaRef.Subst(ArgsAsWritten->getTemplateArgs(),
+                                            ArgsAsWritten->NumTemplateArgs, TransformedArgs,
+                                            Args)) {
+          // Associated constraint has access to the template parameter which
+          // it constraints. We need to add freshly created template parameter
+          // to the substitution list.
+          SmallVector<TemplateArgument, 16> NewSubstArgs;
+          ArrayRef<TemplateArgument> SubstArgs = Args.getInnermost();
+          NewSubstArgs.insert(NewSubstArgs.end(), SubstArgs.begin(), SubstArgs.end());
+          NewSubstArgs.push_back(SemaRef.Context.getCanonicalTemplateArgument(
+            SemaRef.Context.getInjectedTemplateArg(NewTTP)));
+          MultiLevelTemplateArgumentList NewArgs;
+          NewArgs.addOuterTemplateArguments(NewSubstArgs);
+          NewArgs.addOuterRetainedLevel();
+
           ExprResult InstantiatedConstraint =
-              SemaRef.SubstExpr(TC->getImmediatelyDeclaredConstraint(), Args);
+              SemaRef.SubstExpr(TC->getImmediatelyDeclaredConstraint(), NewArgs);
           if (InstantiatedConstraint.isUsable())
             NewTTP->setTypeConstraint(TC->getNestedNameSpecifierLoc(),
                 TC->getConceptNameInfo(), TC->getFoundDecl(),
                 TC->getNamedConcept(),
-                ASTTemplateArgumentListInfo::Create(SemaRef.Context,
-                                                    TransformedArgs),
+                ArgsAsWritten ? ASTTemplateArgumentListInfo::Create(SemaRef.Context,
+                                                                    TransformedArgs)
+                                                                    : nullptr,
                 InstantiatedConstraint.get());
         }
       }
@@ -2172,10 +2187,19 @@ private:
     return NewParam;
   }
 
+  Expr *transformExpr(Expr *E, MultiLevelTemplateArgumentList &Args) {
+    if (!E)
+      return nullptr;
+    auto InstantiatedTrailingConstraint = SemaRef.SubstExpr(E, Args);
+    if (!InstantiatedTrailingConstraint.isUsable())
+      return nullptr;
+    return InstantiatedTrailingConstraint.get();
+  }
+
   NamedDecl *buildDeductionGuide(TemplateParameterList *TemplateParams,
                                  ExplicitSpecifier ES, TypeSourceInfo *TInfo,
                                  SourceLocation LocStart, SourceLocation Loc,
-                                 SourceLocation LocEnd) {
+                                 SourceLocation LocEnd, Expr *TrailingConstraint = nullptr) {
     DeclarationNameInfo Name(DeductionGuideName, Loc);
     ArrayRef<ParmVarDecl *> Params =
         TInfo->getTypeLoc().castAs<FunctionProtoTypeLoc>().getParams();
@@ -2194,6 +2218,8 @@ private:
         SemaRef.Context, DC, Loc, DeductionGuideName, TemplateParams, Guide);
     GuideTemplate->setImplicit();
     Guide->setDescribedFunctionTemplate(GuideTemplate);
+    if (TrailingConstraint)
+      Guide->setTrailingRequiresClause(TrailingConstraint);
 
     if (isa<CXXRecordDecl>(DC)) {
       Guide->setAccess(AS_public);
