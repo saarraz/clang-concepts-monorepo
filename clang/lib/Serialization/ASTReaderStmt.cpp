@@ -830,7 +830,7 @@ void ASTStmtReader::VisitRequiresExpr(RequiresExpr *E) {
               if (Status >= ExprRequirement::SS_ConstraintsNotSatisfied)
                 SubstitutedConstraintExpr =
                     cast<ConceptSpecializationExpr>(Record.readExpr());
-              Req.emplace(Record.getContext(), TPL);
+              Req.emplace(TPL);
             } break;
             case 2:
               // Substitution failure

@@ -1847,7 +1847,7 @@ TemplateInstantiator::TransformExprRequirement(ExprRequirement *Req) {
           }));
     else {
       TPLInst.Clear();
-      TransRetReq.emplace(SemaRef.Context, TPL);
+      TransRetReq.emplace(TPL);
     }
   }
   assert(TransRetReq.hasValue() &&

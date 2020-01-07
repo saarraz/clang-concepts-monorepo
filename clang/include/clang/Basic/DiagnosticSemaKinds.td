@@ -2627,7 +2627,7 @@ def note_expr_requirement_type_requirement_unknown_substitution_error : Note<
 def note_expr_requirement_constraints_not_satisfied : Note<
   "%select{and|because}0 type constraint '%1' was not satisfied:">;
 def note_expr_requirement_constraints_not_satisfied_simple : Note<
-  "%select{and|because}0 expression type %1 does not satisfy %2:">;
+  "%select{and|because}0 %1 does not satisfy %2:">;
 def note_type_requirement_substitution_error : Note<
   "%select{and|because}0 '%1' would be invalid: %2">;
 def note_type_requirement_unknown_substitution_error : Note<

@@ -5198,13 +5198,15 @@ public:
                   Constraint->containsUnexpandedParameterPack()),
       Value(Constraint) {
     assert(Constraint->isInstantiationDependent() &&
-           "Nested requirement with Non-dependent constraint must be "
+           "Nested requirement with non-dependent constraint must be "
            "constructed with a ConstraintSatisfaction object");
   }
 
   NestedRequirement(ASTContext &C, Expr *Constraint,
                     const ConstraintSatisfaction &Satisfaction) :
-      Requirement(RK_Nested, false, false, Satisfaction.IsSatisfied),
+      Requirement(RK_Nested, Constraint->isInstantiationDependent(),
+                  Constraint->containsUnexpandedParameterPack(),
+                  Satisfaction.IsSatisfied),
       Value(Constraint),
       Satisfaction(ASTConstraintSatisfaction::Create(C, Satisfaction)) {}
 

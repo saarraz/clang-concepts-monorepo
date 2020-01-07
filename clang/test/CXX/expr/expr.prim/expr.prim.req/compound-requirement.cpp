@@ -85,7 +85,7 @@ concept Same = is_same_v<T, U>;
 template<typename T>
 concept Large = sizeof(T) >= 4; // expected-note{{because 'sizeof(short) >= 4' (2 >= 4) evaluated to false}}
 
-template<typename T> requires requires (T t) { { t } -> Large; } // expected-note{{because expression type 'short' does not satisfy 'Large':}}
+template<typename T> requires requires (T t) { { t } -> Large; } // expected-note{{because 'decltype(t)' (aka 'short') does not satisfy 'Large':}}
 struct r7 {};
 
 using r7i1 = r7<int>;

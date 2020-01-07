@@ -11339,7 +11339,7 @@ TreeTransform<Derived>::TransformExprRequirement(ExprRequirement *Req) {
         getDerived().TransformTemplateParameterList(OrigTPL);
     if (!TPL)
       return nullptr;
-    TransRetReq.emplace(getSema().Context, TPL);
+    TransRetReq.emplace(TPL);
   }
   assert(TransRetReq.hasValue() &&
          "All code paths leading here must set TransRetReq");
