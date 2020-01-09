@@ -2929,22 +2929,21 @@ namespace {
 
 static void CopyTypeConstraintFromAutoType(Sema &SemaRef, const AutoType *Auto,
                                            TemplateTypeParmDecl *TP,
-                                           const bool IsParameterPack) {
-  TypeSourceInfo *DI =
-      SemaRef.getASTContext().getTrivialTypeSourceInfo(QualType(Auto, 0));
+                                           const Declarator &D) {
+  TypeSourceInfo *DI = SemaRef.getASTContext().getTrivialTypeSourceInfo(
+      QualType(Auto, 0), D.getBeginLoc());
   const AutoTypeLoc ATL = DI->getTypeLoc().findAutoTypeLoc();
 
   TemplateArgumentListInfo TAL(ATL.getLAngleLoc(), ATL.getRAngleLoc());
-  for (unsigned Idx = 0; Idx < ATL.getNumArgs(); ++Idx) {
-    TAL.addArgument(ATL.getArgLoc(Idx));
-  }
+
+  if (ATL.wereArgumentsSpecified())
+    for (unsigned Idx = 0, C = ATL.getNumArgs(); Idx != C; ++Idx)
+      TAL.addArgument(ATL.getArgLoc(Idx));
 
   SemaRef.AttachTypeConstraint(
       ATL.getNestedNameSpecifierLoc(), ATL.getConceptNameInfo(),
       ATL.getNamedConcept(), ATL.wereArgumentsSpecified() ? &TAL : nullptr, TP,
-      IsParameterPack
-          ? DI->getTypeLoc().getAs<PackExpansionTypeLoc>().getEllipsisLoc()
-          : SourceLocation());
+      D.hasEllipsis() ? D.getEllipsisLoc() : SourceLocation());
 }
 
 static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
@@ -3061,8 +3060,8 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
 
         // Attach type constraints
         if (Auto->isConstrained())
-          CopyTypeConstraintFromAutoType(
-              SemaRef, Auto, CorrespondingTemplateParam, IsParameterPack);
+          CopyTypeConstraintFromAutoType(SemaRef, Auto,
+                                         CorrespondingTemplateParam, D);
 
         // Replace the 'auto' in the function parameter with this invented
         // template type parameter.
