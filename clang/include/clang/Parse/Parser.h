@@ -1807,8 +1807,7 @@ private:
                                       bool IsTypename = false,
                                       IdentifierInfo **LastII = nullptr,
                                       bool OnlyNamespace = false,
-                                      bool InUsingDeclaration = false,
-                                      bool SuppressDiagnostic = false);
+                                      bool InUsingDeclaration = false);
 
   //===--------------------------------------------------------------------===//
   // C++11 5.1.2: Lambda expressions

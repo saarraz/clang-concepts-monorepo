@@ -549,8 +549,7 @@ bool Parser::isStartOfTemplateTypeParameter(bool &ScopeError) {
                                      // non-namespaces anyway, so might as well
                                      // parse this correctly for possible type
                                      // names.
-                                     /*OnlyNamespace=*/false,
-                                     /*SuppressDiagnostic=*/true);
+                                     /*OnlyNamespace=*/false);
   if (ScopeError)
     return false;
   if (!TryAnnotateTypeConstraint(SS) && SS.isNotEmpty()) {

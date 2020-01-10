@@ -2481,7 +2481,7 @@ Decl *TemplateDeclInstantiator::VisitTemplateTypeParmDecl(
 
   Optional<unsigned> NumExpanded;
 
-  if (const TypeConstraint *TC = D->getTypeConstraint())
+  if (const TypeConstraint *TC = D->getTypeConstraint()) {
     if (D->isPackExpansion() && !D->isExpandedParameterPack()) {
       assert(TC->getTemplateArgsAsWritten() &&
              "type parameter can only be an expansion when explicit arguments "
@@ -2507,6 +2507,7 @@ Decl *TemplateDeclInstantiator::VisitTemplateTypeParmDecl(
               Unexpanded, TemplateArgs, Expand, RetainExpansion, NumExpanded))
         return nullptr;
     }
+  }
 
   TemplateTypeParmDecl *Inst = TemplateTypeParmDecl::Create(
       SemaRef.Context, Owner, D->getBeginLoc(), D->getLocation(),
