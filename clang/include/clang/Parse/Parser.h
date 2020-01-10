@@ -1807,7 +1807,8 @@ private:
                                       bool IsTypename = false,
                                       IdentifierInfo **LastII = nullptr,
                                       bool OnlyNamespace = false,
-                                      bool InUsingDeclaration = false);
+                                      bool InUsingDeclaration = false,
+                                      bool SuppressDiagnostic = false);
 
   //===--------------------------------------------------------------------===//
   // C++11 5.1.2: Lambda expressions
@@ -3033,7 +3034,7 @@ public:
                           bool AllowDeductionGuide,
                           ParsedType ObjectType,
                           SourceLocation *TemplateKWLoc,
-                          UnqualifiedId &Result);
+                          UnqualifiedId &Result, bool SuppressDiag = false);
   /// Parses the mapper modifier in map, to, and from clauses.
   bool parseMapperModifier(OpenMPVarListDataTy &Data);
   /// Parses map-type-modifiers in map clause.
@@ -3064,11 +3065,15 @@ private:
                                SourceLocation &RAngleLoc);
   bool ParseTemplateParameterList(unsigned Depth,
                                   SmallVectorImpl<NamedDecl*> &TemplateParams);
-  bool isStartOfTemplateTypeParameter();
+  bool isStartOfTemplateTypeParameter(bool &ScopeError);
   NamedDecl *ParseTemplateParameter(unsigned Depth, unsigned Position);
   NamedDecl *ParseTypeParameter(unsigned Depth, unsigned Position);
   NamedDecl *ParseTemplateTemplateParameter(unsigned Depth, unsigned Position);
-  NamedDecl *ParseNonTypeTemplateParameter(unsigned Depth, unsigned Position);
+  NamedDecl *ParseNonTypeTemplateParameter(unsigned Depth, unsigned Position,
+                                           bool ErrorInTypeSpec);
+  bool TryAnnotateTypeConstraint(CXXScopeSpec &SS);
+  NamedDecl *
+  ParseConstrainedTemplateTypeParameter(unsigned Depth, unsigned Position);
   void DiagnoseMisplacedEllipsis(SourceLocation EllipsisLoc,
                                  SourceLocation CorrectLoc,
                                  bool AlreadyHasEllipsis,
@@ -3090,7 +3095,8 @@ private:
                                CXXScopeSpec &SS,
                                SourceLocation TemplateKWLoc,
                                UnqualifiedId &TemplateName,
-                               bool AllowTypeAnnotation = true);
+                               bool AllowTypeAnnotation = true,
+                               bool TypeConstraint = false);
   void AnnotateTemplateIdTokenAsType(bool IsClassName = false);
   bool ParseTemplateArgumentList(TemplateArgList &TemplateArgs);
   ParsedTemplateArgument ParseTemplateTemplateArgument();
